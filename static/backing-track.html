@@ -75,6 +75,7 @@
     <div class="toast" id="toast" hidden></div>
 
     <script src="/js/common.js?v=9a1c26f3"></script>
+    <script src="/js/drums.js?v=8a1e2096"></script>
     <script>
     (() => {
       const { $ } = App;
@@ -159,6 +160,7 @@
           kick: [[0, 1], [24, 1]],
           snare: [[12, 1], [36, 1]],
           hat: [0, 12, 24, 36].flatMap((t) => [[t, 0.9], [t + 8, 0.5]]),
+          cymbal: 'ride', // condução no prato, como num shuffle de blues
           // boogie: 1–3–5–6 com colcheias swingadas
           bass: [['r', 0], ['3', 12], ['5', 24], ['6', 36]].flatMap(([n, t]) => [[t, 7, n], [t + 8, 3, n]]),
           chords: [[0, 7, 0.8], [20, 4, 0.6], [24, 7, 0.8], [44, 4, 0.6]],
@@ -294,6 +296,20 @@
         },
       };
 
+      // Volume de cada sample relativo ao bumbo (os arquivos estão normalizados)
+      const SAMPLE_GAIN = { kick: 1, snare: 0.8, hat: 0.42, 'hat-tight': 0.5, ride: 0.38, crash: 0.42 };
+      const SYNTH_FALLBACK = { kick: 'kick', snare: 'snare', hat: 'hat', ride: 'hat', 'hat-tight': 'stick' };
+
+      // Toca a peça com sample; sem sample carregado, usa o som sintetizado
+      function hit(piece, dest, t, v) {
+        if (Drums.play(ctx, dest, piece, t, v * SAMPLE_GAIN[piece])) return;
+        if (piece === 'crash') {
+          noise(t, 1.2).connect(filter('highpass', 5000)).connect(env(dest, t, 0.18 * v, 0.002, 0.02, 1.1));
+        } else {
+          drums[SYNTH_FALLBACK[piece]](dest, t, v);
+        }
+      }
+
       function bassNote(dest, t, dur, midi) {
         const o = ctx.createOscillator();
         o.type = 'sawtooth';
@@ -363,7 +379,7 @@
         const tick = beat / 12;
         if (n < 0) {
           for (let b = 0; b < 4; b++) {
-            drums.stick(tracks.count, t0 + b * beat, b === 0 ? 1 : 0.7);
+            hit('hat-tight', tracks.count, t0 + b * beat, b === 0 ? 1 : 0.7);
             visual.push({ time: t0 + b * beat, bar: n, beat: b });
           }
           return;
@@ -375,11 +391,11 @@
         const pc = mod(state.root + ch.semi, 12);
         const third = QUALITIES[ch.quality].iv[1];
 
-        for (const [name, hits] of [['kick', style.kick], ['snare', style.snare], ['hat', style.hat]]) {
-          for (const [k, v] of hits) drums[name](tracks.drums, t0 + k * tick, v);
+        for (const [piece, hits] of [['kick', style.kick], ['snare', style.snare], [style.cymbal || 'hat', style.hat]]) {
+          for (const [k, v] of hits) hit(piece, tracks.drums, t0 + k * tick, v);
         }
-        // prato no começo de cada volta
-        if (idx === 0) noise(t0, 1.2).connect(filter('highpass', 5000)).connect(env(tracks.drums, t0, 0.18, 0.002, 0.02, 1.1));
+        // prato de ataque no começo de cada volta
+        if (idx === 0) hit('crash', tracks.drums, t0, 1);
 
         const bassRoot = 40 + mod(pc - 4, 12); // E2..D#3
         for (const [k, len, iv] of style.bass) {
@@ -416,8 +432,20 @@
         }
       }
 
-      function start() {
+      let loading = false;
+      async function start() {
+        if (loading) return;
         ensureAudio();
+        if (!Drums.ready()) {
+          loading = true;
+          $('play').textContent = '…';
+          $('play').setAttribute('aria-label', 'Carregando a bateria');
+          const ok = await Drums.load(ctx);
+          loading = false;
+          $('play').textContent = '▶';
+          $('play').setAttribute('aria-label', 'Tocar');
+          if (!ok) App.toast('Não deu pra carregar a bateria; usando o som sintetizado.');
+        }
         makeBus();
         playing = true;
         visual = [];
