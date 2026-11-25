@@ -1,0 +1,76 @@
+/* Componentes compartilhados entre as ferramentas */
+body {
+  padding: 16px 16px 40px;
+  box-sizing: border-box;
+  overscroll-behavior: none;
+}
+
+[hidden] { display: none !important; }
+
+button { -webkit-tap-highlight-color: transparent; }
+
+/* ---------- Header ---------- */
+.page-header {
+  width: 100%;
+  max-width: 440px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.page-header h1 {
+  font-size: 1.4rem;
+  margin: 0;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.page-header .back-btn {
+  position: static;
+  font-size: 0.9rem;
+}
+
+/* ---------- Botões ---------- */
+.btn {
+  font-size: 1rem;
+  padding: 12px 22px;
+  border-radius: 12px;
+  transition: transform 0.15s, opacity 0.2s, background 0.2s;
+}
+
+.btn:active { transform: scale(0.96); }
+
+.btn-secondary {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid #334155;
+}
+
+.hint {
+  font-size: 0.8rem;
+  margin-top: 12px;
+  text-align: center;
+}
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #f8fafc;
+  color: #0f172a;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-weight: 600;
+  z-index: 70;
+  animation: fade-in 0.2s ease;
+}
+
+@keyframes fade-in { from { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

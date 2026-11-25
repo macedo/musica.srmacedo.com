@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#6366f1">
+    <title>Escalas · SrMacedo Música</title>
+    <meta name="description" content="Visualize escalas no braço da guitarra: pentatônica, blues, maior, menor e modos, em várias afinações. Toque nas notas para ouvir.">
+    <link rel="stylesheet" href="/css/application.css?v=1aebe6b0">
+    <link rel="stylesheet" href="/css/base.css?v=ca866f98">
+    <link rel="stylesheet" href="/css/escalas.css?v=4b7b37b3">
+    <link rel="manifest" href="/manifest.json">
+  </head>
+  <body>
+    <header class="page-header">
+      <a href="/" class="back-btn">← Menu</a>
+      <h1>Escalas</h1>
+      <div></div>
+    </header>
+
+    <main class="escalas-page">
+      <section class="controls">
+        <nav class="roots" id="roots" aria-label="Tônica"></nav>
+        <div class="row">
+          <select id="scale" aria-label="Escala"></select>
+          <select id="tuning" aria-label="Afinação"></select>
+        </div>
+        <div class="row">
+          <div class="seg" id="labels" role="group" aria-label="Mostrar nas notas">
+            <button data-v="note">Notas</button>
+            <button data-v="interval">Intervalos</button>
+            <button data-v="none">Nada</button>
+          </div>
+          <label class="toggle"><input type="checkbox" id="show-all"> Todas as notas</label>
+          <label class="toggle"><input type="checkbox" id="lefty"> Canhoto</label>
+          <select id="frets" class="frets-select" aria-label="Número de casas">
+            <option value="12">12 casas</option>
+            <option value="15">15 casas</option>
+            <option value="22">22 casas</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="scale-info">
+        <h2 id="title"></h2>
+        <p class="scale-sub" id="sub"></p>
+        <div class="formula" id="formula"></div>
+      </section>
+
+      <div class="board-wrap">
+        <div class="board" id="board" role="img"></div>
+      </div>
+
+      <div class="legend" id="legend"></div>
+
+      <div class="scale-actions">
+        <button id="play" class="btn">▶ Tocar escala</button>
+        <button id="share" class="btn btn-secondary">Compartilhar</button>
+      </div>
+      <p class="hint">Toque em qualquer casa para ouvir a nota</p>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <script src="/js/common.js?v=9a1c26f3"></script>
+    <script>
+    (() => {
+      const { $ } = App;
+
+      // ---------- Teoria ----------
+      const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+      const LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
+      const SOLFEGE = { C: 'Dó', D: 'Ré', E: 'Mi', F: 'Fá', G: 'Sol', A: 'Lá', B: 'Si' };
+      const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+      const ACC = { '-2': '𝄫', '-1': '♭', 0: '', 1: '♯', 2: '𝄪' };
+      const SHARP_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+      const FLAT_NAMES = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
+      const CHROMA_INT = ['1', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7', '7'];
+      // Nas teclas pretas, a grafia preferida em caso de empate
+      const PREFER_SHARP = { 1: true, 3: false, 6: true, 8: false, 10: false };
+      const mod = (n, m) => ((n % m) + m) % m;
+
+      // Graus escritos como na teoria (b3, #4...): daí saem os semitons e a grafia correta
+      const SCALES = [
+        { group: 'Essenciais', id: 'pent-min', name: 'Pentatônica menor', degs: '1 b3 4 5 b7' },
+        { group: 'Essenciais', id: 'pent-maj', name: 'Pentatônica maior', degs: '1 2 3 5 6' },
+        { group: 'Essenciais', id: 'blues', name: 'Blues', degs: '1 b3 4 b5 5 b7', blue: 'b5' },
+        { group: 'Essenciais', id: 'blues-maj', name: 'Blues maior', degs: '1 2 b3 3 5 6', blue: 'b3' },
+        { group: 'Essenciais', id: 'major', name: 'Maior', degs: '1 2 3 4 5 6 7' },
+        { group: 'Essenciais', id: 'minor', name: 'Menor natural', degs: '1 2 b3 4 5 b6 b7' },
+        { group: 'Modos', id: 'ionian', name: 'Jônio', degs: '1 2 3 4 5 6 7' },
+        { group: 'Modos', id: 'dorian', name: 'Dórico', degs: '1 2 b3 4 5 6 b7' },
+        { group: 'Modos', id: 'phrygian', name: 'Frígio', degs: '1 b2 b3 4 5 b6 b7' },
+        { group: 'Modos', id: 'lydian', name: 'Lídio', degs: '1 2 3 #4 5 6 7' },
+        { group: 'Modos', id: 'mixolydian', name: 'Mixolídio', degs: '1 2 3 4 5 6 b7' },
+        { group: 'Modos', id: 'aeolian', name: 'Eólio', degs: '1 2 b3 4 5 b6 b7' },
+        { group: 'Modos', id: 'locrian', name: 'Lócrio', degs: '1 b2 b3 4 b5 b6 b7' },
+        { group: 'Outras', id: 'harm-minor', name: 'Menor harmônica', degs: '1 2 b3 4 5 b6 7' },
+        { group: 'Outras', id: 'mel-minor', name: 'Menor melódica', degs: '1 2 b3 4 5 6 7' },
+        { group: 'Outras', id: 'phrygian-dom', name: 'Frígio dominante', degs: '1 b2 3 4 5 b6 b7' },
+      ].map((s) => ({ ...s, degs: s.degs.split(' ').map(parseDeg) }));
+
+      function parseDeg(raw) {
+        const [, accs, num] = raw.match(/^([b#]*)(\d)$/);
+        const acc = [...accs].reduce((a, c) => a + (c === '#' ? 1 : -1), 0);
+        const n = Number(num);
+        return {
+          raw, n, acc,
+          step: n - 1,
+          semi: mod(MAJOR[n - 1] + acc, 12),
+          label: accs.replace(/b/g, '♭').replace(/#/g, '♯') + num,
+        };
+      }
+
+      const TUNINGS = [
+        { id: 'std', name: 'Afinação padrão (E A D G B E)', open: [40, 45, 50, 55, 59, 64], names: 'E A D G B E' },
+        { id: 'eb', name: 'Meio tom abaixo (E♭)', open: [39, 44, 49, 54, 58, 63], names: 'E♭ A♭ D♭ G♭ B♭ E♭' },
+        { id: 'dropd', name: 'Drop D (D A D G B E)', open: [38, 45, 50, 55, 59, 64], names: 'D A D G B E' },
+        { id: 'd', name: 'Um tom abaixo (D G C F A D)', open: [38, 43, 48, 53, 57, 62], names: 'D G C F A D' },
+        { id: 'dropc', name: 'Drop C (C G C F A D)', open: [36, 43, 48, 53, 57, 62], names: 'C G C F A D' },
+        { id: 'dadgad', name: 'DADGAD', open: [38, 45, 50, 55, 57, 62], names: 'D A D G A D' },
+        { id: 'openg', name: 'Open G (D G D G B D)', open: [38, 43, 50, 55, 59, 62], names: 'D G D G B D' },
+        { id: 'opend', name: 'Open D (D A D F♯ A D)', open: [38, 45, 50, 54, 57, 62], names: 'D A D F♯ A D' },
+      ].map((t) => ({ ...t, names: t.names.split(' ') }));
+
+      const INLAYS = { 3: 1, 5: 1, 7: 1, 9: 1, 12: 2, 15: 1, 17: 1, 19: 1, 21: 1, 24: 2 };
+
+      function rootOptions(pc) {
+        const nat = LETTER_PC.indexOf(pc);
+        if (nat >= 0) return [{ letter: nat, acc: 0 }];
+        const sharp = { letter: LETTER_PC.indexOf(pc - 1), acc: 1 };
+        const flat = { letter: LETTER_PC.indexOf(mod(pc + 1, 12)), acc: -1 };
+        return PREFER_SHARP[pc] ? [sharp, flat] : [flat, sharp];
+      }
+
+      function spellNote(root, d) {
+        const rootPc = mod(LETTER_PC[root.letter] + root.acc, 12);
+        const letter = (root.letter + d.step) % 7;
+        const pc = mod(rootPc + d.semi, 12);
+        const acc = mod(pc - LETTER_PC[letter] + 6, 12) - 6;
+        const name = Math.abs(acc) > 1
+          ? (acc > 0 ? SHARP_NAMES[pc] : FLAT_NAMES[pc])
+          : LETTERS[letter] + ACC[acc];
+        return { pc, acc, name, deg: d };
+      }
+
+      // Escolhe a grafia da tônica (C♯ ou D♭?) que deixa a escala com menos acidentes
+      function spellScale(pc, scale) {
+        let best = null;
+        for (const root of rootOptions(pc)) {
+          const notes = scale.degs.map((d) => spellNote(root, d));
+          const score = notes.reduce((s, n) => s + Math.abs(n.acc) + (Math.abs(n.acc) > 1 ? 10 : 0), 0);
+          if (!best || score < best.score) best = { root, notes, score };
+        }
+        // Fora das escalas de 7 notas não há grafia "obrigatória": F♭ vira E, B♯ vira C...
+        if (scale.degs.length !== 7) {
+          best.notes.forEach((n) => { if (/^[EBFC][♯♭]$/.test(n.name) && LETTER_PC.includes(n.pc)) n.name = LETTERS[LETTER_PC.indexOf(n.pc)]; });
+        }
+        const flats = best.notes.filter((n) => n.name.includes('♭')).length;
+        const sharps = best.notes.filter((n) => n.name.includes('♯')).length;
+        best.chromatic = flats >= sharps ? FLAT_NAMES : SHARP_NAMES;
+        best.rootName = best.notes[0].name;
+        return best;
+      }
+
+      function roleOf(d, scale) {
+        if (d.n === 1) return 'root';
+        if (scale.blue === d.raw) return 'blue';
+        if (d.n === 3 || d.n === 5) return 'chord';
+        return 'tone';
+      }
+
+      function solfege(name) {
+        const base = SOLFEGE[name[0]];
+        const rest = name.slice(1);
+        return base + (rest === '♯' ? ' sustenido' : rest === '♭' ? ' bemol' : rest);
+      }
+
+      // ---------- Estado ----------
+      const STORE_KEY = 'escalas:v1';
+      const DEFAULTS = { root: 9, scale: 'pent-min', tuning: 'std', labels: 'note', showAll: false, lefty: false, frets: 15 };
+      let state = { ...DEFAULTS };
+      try { Object.assign(state, JSON.parse(localStorage.getItem(STORE_KEY)) || {}); } catch { /* ignora */ }
+      const hash = new URLSearchParams(location.hash.slice(1));
+      if (hash.has('root')) state.root = mod(Number(hash.get('root')) || 0, 12);
+      if (SCALES.some((s) => s.id === hash.get('scale'))) state.scale = hash.get('scale');
+      if (TUNINGS.some((t) => t.id === hash.get('tuning'))) state.tuning = hash.get('tuning');
+      if (!SCALES.some((s) => s.id === state.scale)) state.scale = DEFAULTS.scale;
+      if (!TUNINGS.some((t) => t.id === state.tuning)) state.tuning = DEFAULTS.tuning;
+      if (![12, 15, 22].includes(Number(state.frets))) state.frets = DEFAULTS.frets;
+      state.frets = Number(state.frets);
+
+      const scaleOf = () => SCALES.find((s) => s.id === state.scale);
+      const tuningOf = () => TUNINGS.find((t) => t.id === state.tuning);
+
+      function save() {
+        localStorage.setItem(STORE_KEY, JSON.stringify(state));
+        const h = `#root=${state.root}&scale=${state.scale}&tuning=${state.tuning}`;
+        history.replaceState(null, '', h);
+      }
+
+      // ---------- Som (Karplus-Strong: ruído que vira corda dedilhada) ----------
+      let ctx = null;
+      const buffers = new Map();
+
+      function pluckBuffer(midi) {
+        if (buffers.has(midi)) return buffers.get(midi);
+        const sr = ctx.sampleRate;
+        const freq = 440 * 2 ** ((midi - 69) / 12);
+        const period = Math.round(sr / freq);
+        const len = Math.floor(sr * 2.2);
+        const buf = ctx.createBuffer(1, len, sr);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < period; i++) d[i] = Math.random() * 2 - 1;
+        for (let i = 1; i < period; i++) d[i] = (d[i] + d[i - 1]) / 2; // ataque menos áspero
+        const decay = 0.996 + Math.min(0.0035, (64 - midi) * 0.00012);
+        for (let i = period; i < len; i++) d[i] = decay * 0.5 * (d[i - period] + d[i - period + 1]);
+        const fade = Math.floor(sr * 0.15);
+        for (let i = 0; i < fade; i++) d[len - 1 - i] *= i / fade;
+        buffers.set(midi, buf);
+        return buf;
+      }
+
+      function pluck(midi) {
+        ctx ||= new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') ctx.resume();
+        const src = ctx.createBufferSource();
+        src.buffer = pluckBuffer(midi);
+        const gain = ctx.createGain();
+        gain.gain.value = 0.55;
+        src.connect(gain).connect(ctx.destination);
+        src.start();
+      }
+
+      // ---------- Render ----------
+      const vertical = window.matchMedia('(max-width: 640px)');
+      let current = null; // escala grafada atual
+      let cellEls = new Map(); // "corda:casa" -> elemento .note
+
+      function renderRoots() {
+        const scale = scaleOf();
+        $('roots').innerHTML = '';
+        for (let pc = 0; pc < 12; pc++) {
+          const sp = spellScale(pc, scale);
+          const b = document.createElement('button');
+          b.className = 'root' + (pc === state.root ? ' active' : '');
+          b.textContent = sp.rootName;
+          b.setAttribute('aria-pressed', pc === state.root);
+          b.onclick = () => { state.root = pc; update(); };
+          $('roots').appendChild(b);
+        }
+      }
+
+      function renderInfo() {
+        const scale = scaleOf();
+        $('title').textContent = `${current.rootName} ${scale.name.toLowerCase()}`;
+        $('sub').textContent = `${solfege(current.rootName)} · ${current.notes.length} notas`;
+        $('formula').innerHTML = '';
+        const base = lowestRoot().midi;
+        current.notes.forEach((n) => {
+          const role = roleOf(n.deg, scale);
+          const b = document.createElement('button');
+          b.className = `chip ${role}-c`;
+          b.innerHTML = `<strong>${n.name}</strong><span>${n.deg.label}</span>`;
+          b.onclick = () => pluck(base + n.deg.semi);
+          $('formula').appendChild(b);
+        });
+
+        const roles = new Set(current.notes.map((n) => roleOf(n.deg, scale)));
+        const items = [
+          ['root', 'Tônica'],
+          ['chord', '3ª e 5ª (acorde)'],
+          ['tone', 'Outras notas'],
+          ['blue', 'Blue note'],
+        ].filter(([r]) => roles.has(r));
+        $('legend').innerHTML = items.map(([r, label]) => `<span class="${r}-c"><i></i>${label}</span>`).join('');
+      }
+
+      function place(el, row, col) {
+        el.style.gridRow = row;
+        el.style.gridColumn = col;
+      }
+
+      function renderBoard() {
+        const scale = scaleOf();
+        const tuning = tuningOf();
+        const N = state.frets;
+        const v = vertical.matches;
+        const board = $('board');
+        board.className = `board ${v ? 'v' : 'h'}${state.lefty ? ' lefty' : ''}`;
+        board.innerHTML = '';
+        board.setAttribute('aria-label', `${$('title').textContent} no braço da guitarra, ${tuning.name}`);
+        cellEls = new Map();
+
+        // Casas encolhem como numa guitarra de verdade (razão 2^(-1/12))
+        const ratio = (f) => 2 ** (-(f - 1) / 12);
+        if (v) {
+          board.style.gridTemplateColumns = '26px repeat(6, minmax(0, 1fr))';
+          board.style.gridTemplateRows = `24px 36px ${Array.from({ length: N }, (_, i) => `${Math.max(40, Math.round(64 * ratio(i + 1)))}px`).join(' ')}`;
+        } else {
+          board.style.gridTemplateColumns = `26px 38px ${Array.from({ length: N }, (_, i) => `minmax(${N > 15 ? 34 : 40}px, ${(10 * ratio(i + 1)).toFixed(2)}fr)`).join(' ')}`;
+          board.style.gridTemplateRows = 'repeat(6, 34px) 22px';
+        }
+
+        // posições: corda s (0 = mais grave), casa f
+        const pos = v
+          ? { cell: (s, f) => [f + 2, s + 2], label: (s) => [1, s + 2], num: (f) => [f + 2, 1], fretSpan: (f) => [f + 2, '2 / 8'], wood: () => [`3 / ${N + 3}`, '2 / 8'] }
+          : { cell: (s, f) => [6 - s, f + 2], label: (s) => [6 - s, 1], num: (f) => [7, f + 2], fretSpan: (f) => ['1 / 7', f + 2], wood: () => ['1 / 7', `3 / ${N + 3}`] };
+
+        const wood = document.createElement('div');
+        wood.className = 'wood';
+        place(wood, ...pos.wood());
+        board.appendChild(wood);
+
+        for (let f = 1; f <= N; f++) {
+          if (!INLAYS[f]) continue;
+          const inlay = document.createElement('div');
+          inlay.className = 'inlay';
+          inlay.innerHTML = '<i></i>'.repeat(INLAYS[f]);
+          place(inlay, ...pos.fretSpan(f));
+          board.appendChild(inlay);
+        }
+
+        for (let f = 0; f <= N; f++) {
+          const num = document.createElement('div');
+          num.className = 'fret-num' + (INLAYS[f] ? ' mark' : '');
+          num.textContent = f === 0 ? '' : f;
+          place(num, ...pos.num(f));
+          board.appendChild(num);
+        }
+
+        const byPc = new Map(current.notes.map((n) => [n.pc, n]));
+        for (let s = 0; s < 6; s++) {
+          const label = document.createElement('div');
+          label.className = 'string-label';
+          label.textContent = tuning.names[s];
+          place(label, ...pos.label(s));
+          board.appendChild(label);
+
+          for (let f = 0; f <= N; f++) {
+            const midi = tuning.open[s] + f;
+            const pc = mod(midi, 12);
+            const n = byPc.get(pc);
+            const cell = document.createElement('div');
+            cell.className = 'cell' + (f === 0 ? ' open' : '');
+            cell.style.setProperty('--t', `${(1 + (5 - s) * 0.35).toFixed(2)}px`);
+            place(cell, ...pos.cell(s, f));
+
+            let dot = null;
+            if (n || state.showAll) {
+              dot = document.createElement('span');
+              if (n) {
+                dot.className = `note ${roleOf(n.deg, scale)}-c`;
+                dot.textContent = state.labels === 'note' ? n.name : state.labels === 'interval' ? n.deg.label : '';
+              } else {
+                dot.className = 'note out';
+                const interval = CHROMA_INT[mod(pc - state.root, 12)];
+                dot.textContent = state.labels === 'note' ? current.chromatic[pc] : state.labels === 'interval' ? interval : '';
+              }
+              cell.appendChild(dot);
+              cellEls.set(`${s}:${f}`, dot);
+            }
+            cell.addEventListener('pointerdown', () => {
+              pluck(midi);
+              if (dot) ping(dot);
+            });
+            board.appendChild(cell);
+          }
+        }
+
+        // começa mostrando a pestana (no canhoto ela fica à direita)
+        const wrap = board.parentElement;
+        wrap.scrollLeft = !v && state.lefty ? wrap.scrollWidth : 0;
+      }
+
+      function ping(el, cls = 'ping', ms = 220) {
+        el.classList.add(cls);
+        setTimeout(() => el.classList.remove(cls), ms);
+      }
+
+      // ---------- Tocar a escala ----------
+      // Começa na tônica mais grave da 6ª corda e sobe uma oitava, ficando perto dessa região
+      function lowestRoot() {
+        const open = tuningOf().open[0];
+        const f = mod(state.root - open, 12);
+        return { midi: open + f, fret: f };
+      }
+
+      function scaleRun() {
+        const tuning = tuningOf();
+        const start = lowestRoot();
+        const anchor = start.fret + 1;
+        const pitches = [...current.notes.map((n) => start.midi + n.deg.semi), start.midi + 12];
+        const up = pitches.map((midi) => {
+          let best = null;
+          for (let s = 0; s < 6; s++) {
+            const f = midi - tuning.open[s];
+            if (f < 0 || f > state.frets) continue;
+            const cost = Math.abs(f - anchor) + s * 0.01;
+            if (!best || cost < best.cost) best = { s, f, midi, cost };
+          }
+          return best;
+        }).filter(Boolean);
+        return [...up, ...up.slice(0, -1).reverse()];
+      }
+
+      let playTimer = null;
+      function stopPlaying() {
+        clearTimeout(playTimer);
+        playTimer = null;
+        $('play').textContent = '▶ Tocar escala';
+      }
+
+      function playScale() {
+        if (playTimer) return stopPlaying();
+        const run = scaleRun();
+        let i = 0;
+        $('play').textContent = '■ Parar';
+        (function step() {
+          if (i >= run.length) return stopPlaying();
+          const { s, f, midi } = run[i++];
+          pluck(midi);
+          const dot = cellEls.get(`${s}:${f}`);
+          if (dot) ping(dot, 'playing', 260);
+          playTimer = setTimeout(step, 320);
+        })();
+      }
+
+      // ---------- Controles ----------
+      function fillSelects() {
+        const groups = [...new Set(SCALES.map((s) => s.group))];
+        $('scale').innerHTML = groups.map((g) => `<optgroup label="${g}">${
+          SCALES.filter((s) => s.group === g).map((s) => `<option value="${s.id}">${s.name}</option>`).join('')
+        }</optgroup>`).join('');
+        $('tuning').innerHTML = TUNINGS.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+      }
+
+      function syncControls() {
+        $('scale').value = state.scale;
+        $('tuning').value = state.tuning;
+        $('frets').value = String(state.frets);
+        $('show-all').checked = state.showAll;
+        $('lefty').checked = state.lefty;
+        $('labels').querySelectorAll('button').forEach((b) => {
+          b.classList.toggle('active', b.dataset.v === state.labels);
+          b.setAttribute('aria-pressed', b.dataset.v === state.labels);
+        });
+      }
+
+      function update() {
+        stopPlaying();
+        current = spellScale(state.root, scaleOf());
+        syncControls();
+        renderRoots();
+        renderInfo();
+        renderBoard();
+        save();
+      }
+
+      fillSelects();
+      $('scale').onchange = (e) => { state.scale = e.target.value; update(); };
+      $('tuning').onchange = (e) => { state.tuning = e.target.value; update(); };
+      $('frets').onchange = (e) => { state.frets = Number(e.target.value); update(); };
+      $('show-all').onchange = (e) => { state.showAll = e.target.checked; update(); };
+      $('lefty').onchange = (e) => { state.lefty = e.target.checked; update(); };
+      $('labels').querySelectorAll('button').forEach((b) => {
+        b.onclick = () => { state.labels = b.dataset.v; update(); };
+      });
+      $('play').onclick = playScale;
+      $('share').onclick = () => App.share({
+        title: 'Escalas',
+        path: `/escalas${location.hash}`,
+        text: `${$('title').textContent} no braço da guitarra 🎸`,
+      });
+      vertical.addEventListener('change', renderBoard);
+
+      update();
+
+      // gancho para testes automatizados
+      window.__escalas = { get state() { return state; }, get current() { return current; }, spellScale, SCALES, scaleRun };
+    })();
+    </script>
+  </body>
+</html>

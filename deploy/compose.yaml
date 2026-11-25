@@ -1,0 +1,21 @@
+# Installed as /etc/musica/compose.yaml (root-owned).
+# Published to the internet only through Cloudflare Tunnel (cloudflared on the
+# internal "publica" network); no ports are exposed on the host.
+services:
+  musica:
+    build: /home/macedo/code/musica.srmacedo.com
+    image: musica:local
+    container_name: musica
+    restart: unless-stopped
+    networks:
+      - publica
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    pids_limit: 100
+
+networks:
+  publica:
+    external: true

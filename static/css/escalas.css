@@ -1,0 +1,308 @@
+/* Visualizador de escalas para guitarra */
+:root {
+  --c-root: #f97316;
+  --c-chord: #6366f1;
+  --c-tone: #e2e8f0;
+  --c-blue: #22d3ee;
+  --wood: #2a2019;
+  --wire: #8b93a1;
+  --nut: #e7e5e4;
+}
+
+.escalas-page {
+  width: 100%;
+  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+/* ---------- Controles ---------- */
+.controls {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.roots {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.root {
+  padding: 9px 0;
+  background: var(--card-bg);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+  transition: border-color 0.2s, background 0.2s, color 0.2s, transform 0.15s;
+}
+
+.root:active { transform: scale(0.94); }
+
+@media (hover: hover) {
+  .root:hover { opacity: 1; border-color: #334155; color: var(--text); }
+}
+
+.root.active {
+  background: rgba(249, 115, 22, 0.15);
+  border-color: var(--c-root);
+  color: var(--text);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.row select { flex: 1 1 200px; min-width: 0; }
+
+.seg {
+  display: inline-flex;
+  background: var(--card-bg);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.seg button {
+  background: transparent;
+  color: var(--text-muted);
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.seg button.active {
+  background: var(--primary);
+  color: white;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card-bg);
+  padding: 8px 12px;
+  border-radius: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle input { accent-color: var(--primary); margin: 0; }
+.toggle:has(input:checked) { color: var(--text); }
+
+.frets-select { flex: 0 0 auto !important; padding-top: 7px; padding-bottom: 7px; font-size: 0.85rem; }
+
+/* ---------- Resumo da escala ---------- */
+.scale-info {
+  width: 100%;
+  max-width: 720px;
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.scale-info h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.scale-sub {
+  margin: 2px 0 12px;
+  font-size: 0.85rem;
+}
+
+.formula {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 44px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 2px solid var(--c);
+  color: var(--text);
+  transition: transform 0.15s;
+}
+
+.chip:active { transform: scale(0.94); }
+.chip strong { font-size: 1.05rem; }
+.chip span { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
+
+/* ---------- Braço ---------- */
+.board-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 6px;
+}
+
+.board {
+  display: grid;
+  position: relative;
+  margin: 0 auto;
+}
+
+.board.lefty { direction: rtl; }
+.board.lefty > * { direction: ltr; }
+
+.board.h {
+  width: 100%;
+  min-width: max-content;
+}
+
+.board.v {
+  width: 100%;
+  max-width: 380px;
+}
+
+.wood {
+  background: var(--wood);
+  background-image: repeating-linear-gradient(var(--grain), rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 9px);
+  border-radius: 2px;
+}
+
+.h .wood { --grain: 90deg; }
+.v .wood { --grain: 0deg; }
+
+.inlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40%;
+  pointer-events: none;
+}
+
+.h .inlay { flex-direction: column; }
+
+.inlay i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(231, 220, 198, 0.3);
+}
+
+.cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* corda */
+.cell::before {
+  content: '';
+  position: absolute;
+  background: linear-gradient(var(--sdir), #e2e8f0, #94a3b8);
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.h .cell::before { --sdir: 180deg; left: 0; right: 0; top: 50%; height: var(--t); transform: translateY(-50%); }
+.v .cell::before { --sdir: 90deg; top: 0; bottom: 0; left: 50%; width: var(--t); transform: translateX(-50%); }
+
+/* trastes e pestana */
+.h .cell { border-inline-end: 3px solid var(--wire); }
+.v .cell { border-bottom: 3px solid var(--wire); }
+.h .cell.open { border-inline-end: 7px solid var(--nut); }
+.v .cell.open { border-bottom: 7px solid var(--nut); }
+
+.note {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: var(--c);
+  color: var(--ink, white);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+
+.root-c { --c: var(--c-root); }
+.chord-c { --c: var(--c-chord); }
+.tone-c { --c: var(--c-tone); --ink: #0f172a; }
+.blue-c { --c: var(--c-blue); --ink: #0f172a; }
+
+.note.out {
+  width: 22px;
+  height: 22px;
+  background: rgba(15, 23, 42, 0.75);
+  color: #64748b;
+  font-size: 0.62rem;
+  box-shadow: none;
+  border: 1px dashed #475569;
+}
+
+.note.ping, .note.playing {
+  transform: scale(1.3);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35), 0 0 18px var(--c);
+}
+
+.string-label, .fret-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.fret-num { color: #475569; font-weight: 600; }
+.fret-num.mark { color: var(--text-muted); font-weight: 800; }
+
+/* ---------- Legenda e ações ---------- */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+
+.scale-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.scale-actions .hint { margin: 0; align-self: center; }
+
+@media (max-width: 640px) {
+  .roots { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .scale-info h2 { font-size: 1.15rem; }
+}

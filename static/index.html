@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#6366f1">
+    <title>SrMacedo Música</title>
+    <meta name="description" content="Ferramentas para estudar guitarra: escalas no braço, com som.">
+    <link rel="stylesheet" href="/css/application.css?v=1aebe6b0">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/images/icon.png">
+  </head>
+  <body>
+
+    <header>
+      <h1>SrMacedo Música</h1>
+      <p>Ferramentas para estudar guitarra</p>
+    </header>
+
+    <main class="grid-container">
+      <a href="/escalas" class="card">
+        <div class="card-icon">🎸</div>
+        <h2>Escalas</h2>
+        <p>Veja escalas no braço da guitarra e ouça cada nota.</p>
+        <span class="badge">Novo!</span>
+      </a>
+    </main>
+
+    <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js")
+        .then(() => console.log("Service Worker Ativo!"))
+        .catch(err => console.log("Erro no SW:", err));
+    }
+    </script>
+
+  </body>
+</html>
