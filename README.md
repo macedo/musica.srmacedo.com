@@ -6,7 +6,7 @@ Ferramentas para estudar guitarra. Site estático servido por um pequeno servido
 - `/metronomo`: metrônomo com acentos, subdivisões, tap tempo e treino de velocidade.
 - `/backing-track`: bateria, baixo e acordes no tom e na progressão escolhidos.
 
-Os samples de bateria são da Karoryfer Samples (CC0); veja `static/audio/drums/README.md`.
+Os samples são todos CC0: bateria e baixo da Karoryfer Samples, piano da VCSL. A origem de cada arquivo está no `README.md` de cada pasta em `static/audio/`.
 
 ## Desenvolvimento
 
