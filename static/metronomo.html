@@ -83,6 +83,7 @@
     <div class="toast" id="toast" hidden></div>
 
     <script src="/js/common.js?v=9a1c26f3"></script>
+    <script src="/js/drums.js?v=8a1e2096"></script>
     <script>
     (() => {
       const { $, toast } = App;
@@ -111,6 +112,7 @@
         { id: 'click', label: 'Clique' },
         { id: 'wood', label: 'Madeira' },
         { id: 'beep', label: 'Beep' },
+        { id: 'drums', label: 'Bateria' },
       ];
       const LEVELS = ['accent', 'medium', 'normal', 'mute'];
 
@@ -175,10 +177,20 @@
         return g;
       }
 
+      // Bateria de verdade: forte = bumbo + chimbal; demais = chimbal; subdivisão = chimbal fechadinho
+      const DRUM_HITS = {
+        accent: [['kick', 0.9], ['hat', 0.45]],
+        medium: [['hat', 0.55]],
+        normal: [['hat', 0.4]],
+        sub: [['hat-tight', 0.28]],
+      };
+
       function playSound(level, t) {
         const f = PITCH[level];
         const peak = LOUD[level];
-        if (state.sound === 'click') {
+        if (state.sound === 'drums' && Drums.ready()) {
+          for (const [piece, v] of DRUM_HITS[level]) Drums.play(ctx, master, piece, t, v);
+        } else if (state.sound === 'click' || state.sound === 'drums') {
           const o = ctx.createOscillator();
           o.type = 'square';
           o.frequency.value = f;
@@ -246,8 +258,22 @@
         trainerOnBar();
       }
 
-      function start() {
+      // Os samples da bateria só são baixados quando alguém escolhe esse som
+      let loading = false;
+      async function loadDrums() {
+        if (Drums.ready() || loading) return;
+        loading = true;
+        $('play').textContent = '…';
+        const ok = await Drums.load(ctx);
+        loading = false;
+        if (!playing) $('play').textContent = '▶';
+        if (!ok) toast('Não deu pra carregar a bateria; usando o clique.');
+      }
+
+      async function start() {
+        if (loading) return;
         ensureAudio();
+        if (state.sound === 'drums') await loadDrums();
         playing = true;
         beat = sub = bar = 0;
         barsAtLastStep = 0;
@@ -422,7 +448,9 @@
         renderChips($('sounds'), SOUNDS, (s) => s.id === state.sound, (s) => {
           state.sound = s.id;
           save();
-          if (!playing) { ensureAudio(); playSound('accent', ctx.currentTime + 0.01); }
+          ensureAudio();
+          if (s.id === 'drums') loadDrums().then(() => !playing && playSound('accent', ctx.currentTime + 0.01));
+          else if (!playing) playSound('accent', ctx.currentTime + 0.01);
         }, (s) => s.label);
       }
 
