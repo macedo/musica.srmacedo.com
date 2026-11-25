@@ -103,22 +103,6 @@
   align-items: center;
 }
 
-.step {
-  width: 56px;
-  height: 56px;
-  padding: 0;
-  border-radius: 50%;
-  background: #0f172a;
-  border: 1px solid #334155;
-  color: var(--text);
-  font-size: 1.6rem;
-  line-height: 1;
-  touch-action: manipulation;
-  user-select: none;
-}
-
-.step:active { transform: scale(0.92); }
-
 .bpm-value {
   font-size: 4.6rem;
   font-weight: 800;
@@ -141,12 +125,6 @@
   font-style: italic;
 }
 
-input[type='range'] {
-  width: 100%;
-  accent-color: var(--primary);
-  margin: 0;
-}
-
 /* ---------- Transporte ---------- */
 .transport {
   display: grid;
@@ -154,20 +132,6 @@ input[type='range'] {
   align-items: center;
   gap: 12px;
 }
-
-.play {
-  width: 88px;
-  height: 88px;
-  padding: 0;
-  border-radius: 50%;
-  font-size: 2rem;
-  background: linear-gradient(135deg, #22d3ee, #6366f1);
-  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.35);
-  transition: transform 0.15s;
-}
-
-.play:active { transform: scale(0.94); }
-.play.playing { background: linear-gradient(135deg, #fb923c, #ef4444); box-shadow: 0 10px 30px rgba(239, 68, 68, 0.3); }
 
 .tap {
   justify-self: start;
@@ -193,107 +157,7 @@ input[type='range'] {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- Painéis ---------- */
-.panel {
-  background: var(--card-bg);
-  border-radius: 16px;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.panel h2,
-.panel-title {
-  margin: 0;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chips button {
-  flex: 1 1 0;
-  min-width: 48px;
-  padding: 8px 6px;
-  background: #0f172a;
-  border: 2px solid transparent;
-  border-radius: 10px;
-  color: var(--text-muted);
-  font-weight: 700;
-  font-size: 0.9rem;
-}
-
-.chips button.active {
-  border-color: var(--primary);
-  background: rgba(99, 102, 241, 0.15);
-  color: var(--text);
-}
-
-.panel h2 .chosen { color: var(--text); text-transform: none; letter-spacing: 0; font-weight: 700; }
-.chips .sub-icon { font-size: 1.15rem; line-height: 1; }
-
-/* Tooltip com o nome (ex.: subdivisões, que só mostram o símbolo) */
-.chips button[data-tip] { position: relative; }
-
-.chips button[data-tip]::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translate(-50%, 4px);
-  background: #f8fafc;
-  color: #0f172a;
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
-  padding: 5px 10px;
-  border-radius: 8px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s, transform 0.12s;
-  z-index: 5;
-}
-
-.chips button[data-tip]:hover::after,
-.chips button[data-tip]:focus-visible::after {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-
-/* No celular não há hover: o nome da escolhida aparece no título do painel */
-@media (hover: none) {
-  .chips button[data-tip]::after { content: none; }
-}
-
-.inline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
 /* ---------- Treino ---------- */
-.toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.toggle .panel-title { flex: 1; }
-.toggle input { width: 20px; height: 20px; accent-color: var(--primary); margin: 0; }
-
 .trainer-form {
   display: flex;
   flex-wrap: wrap;
@@ -340,17 +204,4 @@ input[type='range'] {
   width: 0;
   background: linear-gradient(90deg, var(--primary), #22d3ee);
   transition: width 0.2s ease;
-}
-
-.hint kbd {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 4px;
-  padding: 0 4px;
-  font-family: inherit;
-  font-size: 0.75rem;
-}
-
-@media (hover: none) {
-  .keys { display: none; }
 }
