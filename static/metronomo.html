@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#6366f1">
+    <title>Metrônomo · SrMacedo Música</title>
+    <meta name="description" content="Metrônomo online: BPM, compasso, acentos, subdivisões, tap tempo e modo treino que aumenta o andamento aos poucos.">
+    <link rel="stylesheet" href="/css/application.css?v=1aebe6b0">
+    <link rel="stylesheet" href="/css/base.css?v=ca866f98">
+    <link rel="stylesheet" href="/css/metronomo.css?v=ce150877">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/images/icon.png">
+  </head>
+  <body>
+    <header class="page-header">
+      <a href="/" class="back-btn">← Menu</a>
+      <h1>Metrônomo</h1>
+      <div></div>
+    </header>
+
+    <main class="metro-page">
+      <div>
+        <div class="beats" id="beats" aria-label="Tempos do compasso (toque para mudar o acento)"></div>
+        <div class="subs" id="subs" aria-hidden="true"></div>
+      </div>
+
+      <section class="tempo" id="tempo">
+        <div class="bpm-row">
+          <button class="step" id="minus" aria-label="Diminuir BPM">−</button>
+          <div>
+            <div class="bpm-value" id="bpm" aria-live="polite">100</div>
+            <div class="bpm-unit">BPM</div>
+          </div>
+          <button class="step" id="plus" aria-label="Aumentar BPM">+</button>
+        </div>
+        <p class="tempo-name" id="tempo-name"></p>
+        <input type="range" id="bpm-range" min="30" max="260" step="1" aria-label="BPM">
+      </section>
+
+      <section class="transport">
+        <button class="btn btn-secondary tap" id="tap">Tap</button>
+        <button class="play" id="play" aria-label="Tocar">▶</button>
+        <div class="bar-count">Compasso<strong id="bar-count">—</strong></div>
+      </section>
+
+      <section class="panel">
+        <h2>Compasso</h2>
+        <div class="chips" id="meters"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Subdivisão <span class="chosen" id="subdiv-name"></span></h2>
+        <div class="chips" id="subdivs"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Som</h2>
+        <div class="chips" id="sounds"></div>
+        <label class="inline">Volume <input type="range" id="volume" min="0" max="1" step="0.05"></label>
+      </section>
+
+      <section class="panel off" id="trainer-panel">
+        <label class="toggle">
+          <span class="panel-title">Treino de velocidade</span>
+          <input type="checkbox" id="trainer-on">
+        </label>
+        <div class="trainer-form">
+          Subir <input type="number" id="tr-step" min="1" max="30" inputmode="numeric"> BPM
+          a cada <input type="number" id="tr-every" min="1" max="64" inputmode="numeric"> compassos
+          até <input type="number" id="tr-target" min="30" max="260" inputmode="numeric"> BPM
+        </div>
+        <div class="trainer-bar"><div id="tr-progress"></div></div>
+        <div class="trainer-status" id="tr-status"></div>
+      </section>
+
+      <p class="hint">
+        Toque nas bolinhas para mudar o acento (forte, médio, normal, mudo).
+        <span class="keys"><br><kbd>Espaço</kbd> tocar/parar · <kbd>T</kbd> tap · <kbd>←</kbd> <kbd>→</kbd> ±1 · <kbd>↑</kbd> <kbd>↓</kbd> ±5</span>
+      </p>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <script src="/js/common.js?v=9a1c26f3"></script>
+    <script>
+    (() => {
+      const { $, toast } = App;
+
+      const MIN = 30;
+      const MAX = 260;
+      const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+      // Grupos: em quais tempos (índice 0) começa um grupo e leva acento médio
+      const METERS = [
+        { id: '2/4', beats: 2, groups: [0] },
+        { id: '3/4', beats: 3, groups: [0] },
+        { id: '4/4', beats: 4, groups: [0] },
+        { id: '5/4', beats: 5, groups: [0, 3] },
+        { id: '6/8', beats: 6, groups: [0, 3] },
+        { id: '7/8', beats: 7, groups: [0, 2, 4] },
+        { id: '12/8', beats: 12, groups: [0, 3, 6, 9] },
+      ];
+      const SUBDIVS = [
+        { n: 1, icon: '♩', label: 'Nenhuma' },
+        { n: 2, icon: '♫', label: 'Colcheias' },
+        { n: 3, icon: '3', label: 'Tercinas' },
+        { n: 4, icon: '♬', label: 'Semicolcheias' },
+      ];
+      const SOUNDS = [
+        { id: 'click', label: 'Clique' },
+        { id: 'wood', label: 'Madeira' },
+        { id: 'beep', label: 'Beep' },
+      ];
+      const LEVELS = ['accent', 'medium', 'normal', 'mute'];
+
+      const TEMPO_NAMES = [
+        [40, 'Grave'], [60, 'Largo'], [66, 'Larghetto'], [76, 'Adagio'],
+        [108, 'Andante'], [120, 'Moderato'], [168, 'Allegro'], [200, 'Presto'], [Infinity, 'Prestissimo'],
+      ];
+      const tempoName = (bpm) => TEMPO_NAMES.find(([max]) => bpm < max)[1];
+
+      const defaultAccents = (m) =>
+        Array.from({ length: m.beats }, (_, i) => (i === 0 ? 'accent' : m.groups.includes(i) ? 'medium' : 'normal'));
+
+      // ---------- Estado ----------
+      const STORE_KEY = 'metronomo:v1';
+      const state = {
+        bpm: 100, meter: '4/4', accents: null, subdiv: 1, sound: 'click', volume: 0.8,
+        trainer: { on: false, step: 5, every: 4, target: 140 },
+      };
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORE_KEY)) || {};
+        Object.assign(state, saved, { trainer: { ...state.trainer, ...saved.trainer } });
+      } catch { /* ignora */ }
+      state.bpm = clamp(Math.round(Number(state.bpm)) || 100, MIN, MAX);
+      if (!METERS.some((m) => m.id === state.meter)) state.meter = '4/4';
+      if (!SUBDIVS.some((s) => s.n === state.subdiv)) state.subdiv = 1;
+      if (!SOUNDS.some((s) => s.id === state.sound)) state.sound = 'click';
+      const meterOf = () => METERS.find((m) => m.id === state.meter);
+      if (!Array.isArray(state.accents) || state.accents.length !== meterOf().beats || !state.accents.every((a) => LEVELS.includes(a))) {
+        state.accents = defaultAccents(meterOf());
+      }
+
+      const save = () => localStorage.setItem(STORE_KEY, JSON.stringify(state));
+
+      // ---------- Áudio ----------
+      let ctx = null;
+      let master = null;
+      let noise = null;
+
+      function ensureAudio() {
+        if (!ctx) {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          master = ctx.createGain();
+          master.connect(ctx.destination);
+          noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.05), ctx.sampleRate);
+          const d = noise.getChannelData(0);
+          for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        }
+        master.gain.value = state.volume;
+        if (ctx.state === 'suspended') ctx.resume();
+      }
+
+      // nível: accent | medium | normal | sub
+      const PITCH = { accent: 1760, medium: 1320, normal: 1000, sub: 760 };
+      const LOUD = { accent: 1, medium: 0.8, normal: 0.65, sub: 0.32 };
+
+      function envGain(t, peak, decay) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(peak, t + 0.002);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+        g.connect(master);
+        return g;
+      }
+
+      function playSound(level, t) {
+        const f = PITCH[level];
+        const peak = LOUD[level];
+        if (state.sound === 'click') {
+          const o = ctx.createOscillator();
+          o.type = 'square';
+          o.frequency.value = f;
+          const filt = ctx.createBiquadFilter();
+          filt.type = 'highpass';
+          filt.frequency.value = 400;
+          o.connect(filt).connect(envGain(t, peak * 0.45, 0.035));
+          o.start(t);
+          o.stop(t + 0.05);
+        } else if (state.sound === 'wood') {
+          const o = ctx.createOscillator();
+          o.type = 'triangle';
+          o.frequency.setValueAtTime(f * 0.75, t);
+          o.frequency.exponentialRampToValueAtTime(f * 0.55, t + 0.04);
+          o.connect(envGain(t, peak, 0.07));
+          o.start(t);
+          o.stop(t + 0.09);
+          const n = ctx.createBufferSource();
+          n.buffer = noise;
+          const bp = ctx.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.frequency.value = f * 1.5;
+          bp.Q.value = 4;
+          n.connect(bp).connect(envGain(t, peak * 0.6, 0.015));
+          n.start(t);
+        } else {
+          const o = ctx.createOscillator();
+          o.type = 'sine';
+          o.frequency.value = f * 0.8;
+          o.connect(envGain(t, peak * 0.8, 0.09));
+          o.start(t);
+          o.stop(t + 0.11);
+        }
+      }
+
+      // ---------- Agendador (relógio do áudio, não do setTimeout) ----------
+      const LOOKAHEAD = 0.12; // segundos agendados à frente
+      const TICK_MS = 25;
+      let playing = false;
+      let schedTimer = null;
+      let nextTime = 0;
+      let beat = 0;
+      let sub = 0;
+      let bar = 0; // compassos completos
+      let queue = []; // eventos agendados aguardando para acender na tela
+      let trainerStartBpm = null;
+      let barsAtLastStep = 0;
+
+      function scheduler() {
+        while (nextTime < ctx.currentTime + LOOKAHEAD) {
+          const accent = state.accents[beat];
+          if (accent !== 'mute') playSound(sub === 0 ? accent : 'sub', nextTime);
+          queue.push({ time: nextTime, beat, sub, bar });
+          advance();
+        }
+      }
+
+      function advance() {
+        nextTime += 60 / state.bpm / state.subdiv;
+        if (++sub < state.subdiv) return;
+        sub = 0;
+        if (++beat < state.accents.length) return;
+        beat = 0;
+        bar++;
+        trainerOnBar();
+      }
+
+      function start() {
+        ensureAudio();
+        playing = true;
+        beat = sub = bar = 0;
+        barsAtLastStep = 0;
+        queue = [];
+        nextTime = ctx.currentTime + 0.06;
+        trainerStartBpm = state.trainer.on ? state.bpm : null;
+        scheduler();
+        schedTimer = setInterval(scheduler, TICK_MS);
+        $('play').classList.add('playing');
+        $('play').textContent = '■';
+        $('play').setAttribute('aria-label', 'Parar');
+        requestWakeLock();
+        renderTrainer();
+        requestAnimationFrame(draw);
+      }
+
+      function stop() {
+        playing = false;
+        clearInterval(schedTimer);
+        queue = [];
+        $('play').classList.remove('playing');
+        $('play').textContent = '▶';
+        $('play').setAttribute('aria-label', 'Tocar');
+        lightBeat(-1, -1);
+        releaseWakeLock();
+        if (trainerStartBpm != null && state.bpm !== trainerStartBpm) {
+          toast(`Você chegou a ${state.bpm} BPM 💪`);
+          setBpm(trainerStartBpm);
+        }
+        trainerStartBpm = null;
+        renderTrainer();
+      }
+
+      // ---------- Treino ----------
+      function trainerOnBar() {
+        const tr = state.trainer;
+        if (!tr.on || trainerStartBpm == null) return;
+        if (bar - barsAtLastStep >= tr.every && state.bpm < tr.target) {
+          barsAtLastStep = bar;
+          setBpm(Math.min(tr.target, state.bpm + tr.step), { keepTrainer: true });
+        }
+      }
+
+      function renderTrainer() {
+        const tr = state.trainer;
+        $('trainer-panel').classList.toggle('off', !tr.on);
+        $('trainer-on').checked = tr.on;
+        $('tr-step').value = tr.step;
+        $('tr-every').value = tr.every;
+        $('tr-target').value = tr.target;
+
+        let pct = 0;
+        let msg;
+        if (!tr.on) {
+          msg = 'Desligado. Ligue para subir o andamento sozinho enquanto toca.';
+        } else if (tr.target <= state.bpm && trainerStartBpm == null) {
+          msg = `A meta (${tr.target}) precisa ser maior que o BPM atual.`;
+        } else if (trainerStartBpm == null) {
+          const steps = Math.ceil((tr.target - state.bpm) / tr.step);
+          msg = `De ${state.bpm} a ${tr.target} BPM em ${steps} etapa${steps > 1 ? 's' : ''} · aperte ▶ para começar`;
+        } else if (state.bpm >= tr.target) {
+          pct = 100;
+          msg = `🎯 <strong>Meta atingida: ${state.bpm} BPM!</strong> Continue firme nesse andamento.`;
+        } else {
+          const left = tr.every - ((bar - barsAtLastStep) % tr.every);
+          pct = ((state.bpm - trainerStartBpm) / (tr.target - trainerStartBpm)) * 100;
+          msg = `Próximo: <strong>${Math.min(tr.target, state.bpm + tr.step)} BPM</strong> em ${left} compasso${left > 1 ? 's' : ''}`;
+        }
+        $('tr-progress').style.width = `${clamp(pct, 0, 100)}%`;
+        $('tr-status').innerHTML = msg;
+      }
+
+      // ---------- Tela ----------
+      let lastShownBar = -1;
+
+      function draw() {
+        if (!playing) return;
+        const now = ctx.currentTime;
+        let ev = null;
+        while (queue.length && queue[0].time <= now) ev = queue.shift();
+        if (ev) {
+          lightBeat(ev.beat, ev.sub);
+          if (ev.sub === 0) flash(state.accents[ev.beat]);
+          if (ev.bar !== lastShownBar) {
+            lastShownBar = ev.bar;
+            $('bar-count').textContent = ev.bar + 1;
+            renderTrainer();
+          }
+        }
+        requestAnimationFrame(draw);
+      }
+
+      function lightBeat(b, s) {
+        $('beats').querySelectorAll('.beat').forEach((el, i) => el.classList.toggle('on', i === b));
+        $('subs').querySelectorAll('i').forEach((el, i) => el.classList.toggle('on', i === s));
+      }
+
+      function flash(level) {
+        const el = $('tempo');
+        if (level === 'mute') return;
+        el.classList.remove('flash', 'flash-accent', 'flash-medium', 'flash-normal');
+        el.offsetWidth;
+        el.classList.add('flash', `flash-${level}`);
+      }
+
+      function renderBeats() {
+        $('beats').innerHTML = '';
+        state.accents.forEach((lvl, i) => {
+          const b = document.createElement('button');
+          b.className = `beat ${lvl}`;
+          b.textContent = i + 1;
+          b.title = { accent: 'Forte', medium: 'Médio', normal: 'Normal', mute: 'Mudo' }[lvl];
+          b.onclick = () => {
+            state.accents[i] = LEVELS[(LEVELS.indexOf(lvl) + 1) % LEVELS.length];
+            save();
+            renderBeats();
+          };
+          $('beats').appendChild(b);
+        });
+        $('subs').innerHTML = state.subdiv > 1 ? '<i></i>'.repeat(state.subdiv) : '';
+      }
+
+      function renderBpm() {
+        $('bpm').textContent = state.bpm;
+        $('bpm-range').value = state.bpm;
+        $('tempo-name').textContent = tempoName(state.bpm);
+      }
+
+      function setBpm(v, { keepTrainer = false } = {}) {
+        state.bpm = clamp(Math.round(v), MIN, MAX);
+        // mexer no BPM na mão durante o treino recomeça a contagem a partir daqui
+        if (!keepTrainer && trainerStartBpm != null) {
+          trainerStartBpm = state.bpm;
+          barsAtLastStep = bar;
+        }
+        save();
+        renderBpm();
+        renderTrainer();
+      }
+
+      function renderChips(el, items, isActive, onPick, render, tip) {
+        el.innerHTML = '';
+        items.forEach((it) => {
+          const b = document.createElement('button');
+          b.className = isActive(it) ? 'active' : '';
+          b.setAttribute('aria-pressed', isActive(it));
+          b.innerHTML = render(it);
+          if (tip) {
+            b.dataset.tip = tip(it);
+            b.setAttribute('aria-label', tip(it));
+          }
+          b.onclick = () => { onPick(it); renderControls(); };
+          el.appendChild(b);
+        });
+      }
+
+      function renderControls() {
+        renderChips($('meters'), METERS, (m) => m.id === state.meter, (m) => {
+          state.meter = m.id;
+          state.accents = defaultAccents(m);
+          beat = Math.min(beat, m.beats - 1);
+          save();
+          renderBeats();
+        }, (m) => m.id);
+        renderChips($('subdivs'), SUBDIVS, (s) => s.n === state.subdiv, (s) => {
+          state.subdiv = s.n;
+          sub = 0;
+          save();
+          renderBeats();
+        }, (s) => `<span class="sub-icon" aria-hidden="true">${s.icon}</span>`, (s) => s.label);
+        $('subdiv-name').textContent = `· ${SUBDIVS.find((s) => s.n === state.subdiv).label}`;
+        renderChips($('sounds'), SOUNDS, (s) => s.id === state.sound, (s) => {
+          state.sound = s.id;
+          save();
+          if (!playing) { ensureAudio(); playSound('accent', ctx.currentTime + 0.01); }
+        }, (s) => s.label);
+      }
+
+      // ---------- Tap tempo ----------
+      let taps = [];
+      function tap() {
+        const now = performance.now();
+        if (taps.length && now - taps[taps.length - 1] > 2000) taps = [];
+        taps.push(now);
+        taps = taps.slice(-6);
+        $('tap').classList.add('hit');
+        setTimeout(() => $('tap').classList.remove('hit'), 90);
+        if (taps.length < 2) { $('tap').textContent = 'Tap…'; return; }
+        const intervals = taps.slice(1).map((t, i) => t - taps[i]);
+        const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+        setBpm(60000 / avg);
+        $('tap').textContent = `Tap (${taps.length})`;
+        clearTimeout(tap.reset);
+        tap.reset = setTimeout(() => ($('tap').textContent = 'Tap'), 2000);
+      }
+
+      // ---------- Tela ligada enquanto toca ----------
+      let wakeLock = null;
+      async function requestWakeLock() {
+        try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* sem suporte */ }
+      }
+      function releaseWakeLock() {
+        wakeLock?.release().catch(() => {});
+        wakeLock = null;
+      }
+      document.addEventListener('visibilitychange', () => {
+        if (playing && document.visibilityState === 'visible') requestWakeLock();
+      });
+
+      // ---------- Controles ----------
+      // Segurar o + / − repete, acelerando
+      function holdRepeat(el, delta) {
+        let t = null;
+        const stopHold = () => { clearTimeout(t); t = null; };
+        el.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          setBpm(state.bpm + delta);
+          let wait = 380;
+          const again = () => { setBpm(state.bpm + delta); wait = Math.max(40, wait * 0.8); t = setTimeout(again, wait); };
+          t = setTimeout(again, wait);
+        });
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => el.addEventListener(ev, stopHold));
+        el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setBpm(state.bpm + delta); } });
+      }
+      holdRepeat($('minus'), -1);
+      holdRepeat($('plus'), 1);
+
+      $('bpm-range').addEventListener('input', (e) => setBpm(Number(e.target.value)));
+      $('play').onclick = () => (playing ? stop() : start());
+      $('tap').addEventListener('pointerdown', (e) => { e.preventDefault(); tap(); });
+      $('volume').value = state.volume;
+      $('volume').addEventListener('input', (e) => {
+        state.volume = Number(e.target.value);
+        if (master) master.gain.value = state.volume;
+        save();
+      });
+
+      $('trainer-on').onchange = (e) => {
+        state.trainer.on = e.target.checked;
+        if (playing) {
+          trainerStartBpm = state.trainer.on ? state.bpm : null;
+          barsAtLastStep = bar;
+        }
+        save();
+        renderTrainer();
+      };
+      [['tr-step', 'step', 1, 30], ['tr-every', 'every', 1, 64], ['tr-target', 'target', MIN, MAX]].forEach(([id, key, lo, hi]) => {
+        $(id).addEventListener('change', (e) => {
+          state.trainer[key] = clamp(Math.round(Number(e.target.value)) || lo, lo, hi);
+          save();
+          renderTrainer();
+        });
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.target.matches('input[type="number"]')) return;
+        if (e.key === ' ' && !e.target.matches('button')) { e.preventDefault(); $('play').click(); }
+        else if (e.key === 't' || e.key === 'T') tap();
+        else if (e.key === 'ArrowRight' && !e.target.matches('input')) setBpm(state.bpm + 1);
+        else if (e.key === 'ArrowLeft' && !e.target.matches('input')) setBpm(state.bpm - 1);
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setBpm(state.bpm + 5); }
+        else if (e.key === 'ArrowDown') { e.preventDefault(); setBpm(state.bpm - 5); }
+      });
+
+      // ---------- Início ----------
+      renderBeats();
+      renderBpm();
+      renderControls();
+      renderTrainer();
+
+      // gancho para testes automatizados
+      window.__metronomo = { get state() { return state; }, get bar() { return bar; }, get playing() { return playing; }, start, stop, setBpm, tap };
+    })();
+    </script>
+  </body>
+</html>
