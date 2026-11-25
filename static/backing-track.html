@@ -75,7 +75,10 @@
     <div class="toast" id="toast" hidden></div>
 
     <script src="/js/common.js?v=9a1c26f3"></script>
-    <script src="/js/drums.js?v=8a1e2096"></script>
+    <script src="/js/sampler.js?v=d17a215b"></script>
+    <script src="/js/drums.js?v=feb2f285"></script>
+    <script src="/js/bass.js?v=6f05d30e"></script>
+    <script src="/js/piano.js?v=b868dad0"></script>
     <script>
     (() => {
       const { $ } = App;
@@ -397,13 +400,23 @@
         // prato de ataque no começo de cada volta
         if (idx === 0) hit('crash', tracks.drums, t0, 1);
 
-        const bassRoot = 40 + mod(pc - 4, 12); // E2..D#3
+        // Com samples, o baixo toca na região real (tônica E1..D♯2); o sintetizado
+        // fica uma oitava acima para aparecer em alto-falante pequeno
+        const sampled = Bass.ready();
+        const bassRoot = (sampled ? 28 : 40) + mod(pc - 4, 12);
         for (const [k, len, iv] of style.bass) {
-          bassNote(tracks.bass, t0 + k * tick, len * tick, bassRoot + (iv === '3' ? third : BASS_IV[iv]));
+          const midi = bassRoot + (iv === '3' ? third : BASS_IV[iv]);
+          const t = t0 + k * tick;
+          if (!sampled || !Bass.play(ctx, tracks.bass, midi, t, len * tick, 0.9)) bassNote(tracks.bass, t, len * tick, midi);
         }
         const notes = voicing(pc, ch.quality);
         for (const [k, len, vel] of style.chords) {
-          chordNotes(tracks.chords, t0 + k * tick, len * tick, notes, vel, style.attack);
+          if (Piano.ready()) {
+            // piano: as notas saem quase juntas, com alguns ms de diferença como uma mão de verdade
+            for (const m of notes) Piano.play(ctx, tracks.chords, m, t0 + k * tick + Math.random() * 0.012, len * tick, (0.55 * vel) / Math.sqrt(notes.length));
+          } else {
+            chordNotes(tracks.chords, t0 + k * tick, len * tick, notes, vel, style.attack);
+          }
         }
         const loop = Math.floor((n - seqStart) / seq.length) + 1;
         // o que a tela mostra é decidido agora, junto com o som (a progressão pode mudar depois)
@@ -436,15 +449,19 @@
       async function start() {
         if (loading) return;
         ensureAudio();
-        if (!Drums.ready()) {
+        if (!Drums.ready() || !Bass.ready() || !Piano.ready()) {
           loading = true;
           $('play').textContent = '…';
-          $('play').setAttribute('aria-label', 'Carregando a bateria');
-          const ok = await Drums.load(ctx);
+          $('play').setAttribute('aria-label', 'Carregando os instrumentos');
+          const [drumsOk, bassOk, pianoOk] = await Promise.all([Drums.load(ctx), Bass.load(ctx), Piano.load(ctx)]);
           loading = false;
           $('play').textContent = '▶';
           $('play').setAttribute('aria-label', 'Tocar');
-          if (!ok) App.toast('Não deu pra carregar a bateria; usando o som sintetizado.');
+          const failed = [!drumsOk && 'a bateria', !bassOk && 'o baixo', !pianoOk && 'o piano'].filter(Boolean);
+          if (failed.length) {
+            const list = failed.length > 1 ? `${failed.slice(0, -1).join(', ')} e ${failed.at(-1)}` : failed[0];
+            App.toast(`Não deu pra carregar ${list}; usando o som sintetizado.`);
+          }
         }
         makeBus();
         playing = true;
@@ -579,7 +596,7 @@
       }
 
       function renderMixer() {
-        const NAMES = { drums: '🥁 Bateria', bass: '🎸 Baixo', chords: '🎹 Acordes' };
+        const NAMES = { drums: '🥁 Bateria', bass: '🎸 Baixo', chords: '🎹 Piano' };
         $('mixer').innerHTML = '';
         for (const k of ['drums', 'bass', 'chords']) {
           const m = state.mix[k];
