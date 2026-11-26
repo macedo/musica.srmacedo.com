@@ -1,0 +1,199 @@
+/* Afinador */
+:root {
+  --c-ok: #22c55e;
+  --c-close: #facc15;
+  --c-off: #f97316;
+}
+
+.tuner-page {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.modes button { font-size: 0.95rem; padding: 10px 6px; }
+
+/* ---------- Leitura ---------- */
+.meter,
+.ref-display {
+  --c: var(--text-muted);
+  background: var(--card-bg);
+  border-radius: 20px;
+  padding: 18px 18px 16px;
+  text-align: center;
+  border: 3px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.meter.ok { --c: var(--c-ok); border-color: var(--c-ok); }
+.meter.close { --c: var(--c-close); }
+.meter.off { --c: var(--c-off); }
+.meter.stale { opacity: 0.6; }
+
+.note-row { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+
+.note {
+  font-size: 4.6rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text);
+}
+
+.note sub { font-size: 0.35em; font-weight: 700; color: var(--text-muted); vertical-align: baseline; margin-left: 2px; }
+
+.freq {
+  min-height: 1.2em;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge {
+  position: relative;
+  height: 44px;
+  margin: 18px 4px 4px;
+  border-radius: 10px;
+  background: #0f172a;
+  overflow: hidden;
+}
+
+/* faixa "afinada" (±3 cents de ±50) e "quase" (±10) */
+.gauge-zone {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    transparent 40%, rgba(250, 204, 21, 0.12) 40%, rgba(250, 204, 21, 0.12) 47%,
+    rgba(34, 197, 94, 0.3) 47%, rgba(34, 197, 94, 0.3) 53%,
+    rgba(250, 204, 21, 0.12) 53%, rgba(250, 204, 21, 0.12) 60%, transparent 60%);
+}
+
+.gauge-ticks {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, #334155 0 1px, transparent 1px 10%);
+  background-position: -0.5px 0;
+  mask: linear-gradient(transparent 60%, #000 60%);
+  -webkit-mask: linear-gradient(transparent 60%, #000 60%);
+}
+
+.gauge::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #64748b;
+}
+
+.needle {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 50%;
+  width: 6px;
+  margin-left: -3px;
+  border-radius: 3px;
+  background: var(--c);
+  box-shadow: 0 0 14px var(--c);
+  z-index: 1;
+}
+
+.meter.idle .needle { opacity: 0.25; box-shadow: none; }
+.meter.far .needle { animation: pulse 0.6s ease-in-out infinite alternate; }
+
+@keyframes pulse { to { opacity: 0.4; } }
+
+.gauge-labels {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 4px;
+  font-size: 0.7rem;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.advice {
+  margin: 10px 0 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--c);
+  min-height: 1.4em;
+}
+
+.meter.idle .advice { font-size: 1rem; font-weight: 600; }
+
+.ref-display .freq { margin-top: 8px; }
+
+/* ---------- Cordas ---------- */
+.strings {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.string {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 2px 6px;
+  background: var(--card-bg);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  color: var(--text);
+  touch-action: manipulation;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.string .num { font-size: 0.65rem; color: var(--text-muted); font-weight: 700; }
+.string .name { font-size: 1.3rem; font-weight: 800; line-height: 1.1; }
+.string .name sub { font-size: 0.55em; color: var(--text-muted); vertical-align: baseline; }
+.string .mark { min-height: 1.2em; font-size: 1rem; font-weight: 800; line-height: 1.2; }
+.string .mark.ok { color: var(--c-ok); }
+.string .mark.close { color: var(--c-close); }
+.string .mark.off { color: var(--c-off); }
+
+.string.active { border-color: var(--primary); background: rgba(99, 102, 241, 0.15); }
+.string.locked { border-style: dashed; }
+
+.strings-hint {
+  margin: -6px 0 0;
+  font-size: 0.78rem;
+  text-align: center;
+  min-height: 1.2em;
+}
+
+/* ---------- Microfone ---------- */
+.transport { display: flex; justify-content: center; }
+
+.level {
+  height: 6px;
+  background: #0f172a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.level div {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--c-ok), var(--c-close));
+  transition: width 0.06s linear;
+}
+
+.level div.hot { background: #ef4444; }
+
+/* ---------- Afinação ---------- */
+.a4-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.a4-row .panel-title { flex: 1; }
+.a4-row strong { min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+.step.small { width: 40px; height: 40px; font-size: 1.3rem; }

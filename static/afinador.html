@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#6366f1">
+    <title>Afinador · SrMacedo Música</title>
+    <meta name="description" content="Afinador de guitarra online: ouça a nota de cada corda ou afine pelo microfone (ou interface de áudio) vendo se precisa apertar ou soltar.">
+    <link rel="stylesheet" href="/css/application.css?v=1aebe6b0">
+    <link rel="stylesheet" href="/css/base.css?v=584ccd30">
+    <link rel="stylesheet" href="/css/afinador.css?v=0eb5854c">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/images/icon.png">
+  </head>
+  <body>
+    <header class="page-header">
+      <a href="/" class="back-btn">← Menu</a>
+      <h1>Afinador</h1>
+      <div></div>
+    </header>
+
+    <main class="tuner-page">
+      <div class="chips modes" id="modes" role="tablist" aria-label="Modo">
+        <button data-mode="mic" role="tab">🎤 Ouvir a guitarra</button>
+        <button data-mode="ref" role="tab">🔊 Tocar a nota</button>
+      </div>
+
+      <!-- Leitura do microfone -->
+      <section class="meter" id="meter" aria-live="polite">
+        <div class="note-row">
+          <div class="note" id="note">—</div>
+          <div class="freq" id="freq"></div>
+        </div>
+        <div class="gauge" aria-hidden="true">
+          <div class="gauge-zone"></div>
+          <div class="gauge-ticks"></div>
+          <div class="needle" id="needle"></div>
+        </div>
+        <div class="gauge-labels" aria-hidden="true"><span>−50</span><span>0</span><span>+50</span></div>
+        <p class="advice" id="advice">Toque no microfone para começar</p>
+      </section>
+
+      <!-- Referência -->
+      <section class="ref-display" id="ref-display">
+        <div class="note" id="ref-note">—</div>
+        <div class="freq" id="ref-freq">Toque numa corda para ouvir a nota</div>
+      </section>
+
+      <div class="strings" id="strings" aria-label="Cordas"></div>
+      <p class="strings-hint" id="strings-hint"></p>
+
+      <section class="transport" id="mic-transport">
+        <button class="play" id="mic" aria-label="Ligar o microfone">🎤</button>
+      </section>
+
+      <section class="panel" id="mic-panel">
+        <h2>Entrada</h2>
+        <select id="device" aria-label="Dispositivo de entrada"></select>
+        <div class="chips" id="channels" hidden></div>
+        <div class="level" aria-label="Nível de entrada"><div id="level"></div></div>
+      </section>
+
+      <section class="panel" id="ref-panel">
+        <h2>Som</h2>
+        <div class="chips" id="sounds"></div>
+        <label class="toggle">
+          <span class="panel-title">Repetir a nota</span>
+          <input type="checkbox" id="repeat">
+        </label>
+        <label class="inline">Volume <input type="range" id="volume" min="0" max="1" step="0.05"></label>
+      </section>
+
+      <section class="panel">
+        <h2>Afinação</h2>
+        <select id="tuning" aria-label="Afinação"></select>
+        <div class="a4-row">
+          <span class="panel-title">Referência Lá</span>
+          <button class="step small" id="a4-minus" aria-label="Diminuir a referência">−</button>
+          <strong id="a4">440 Hz</strong>
+          <button class="step small" id="a4-plus" aria-label="Aumentar a referência">+</button>
+        </div>
+      </section>
+
+      <p class="hint" id="hint"></p>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <script src="/js/common.js?v=9a1c26f3"></script>
+    <script src="/js/tunings.js?v=cd5975f3"></script>
+    <script src="/js/pitch.js?v=c35c068d"></script>
+    <script>
+    (() => {
+      const { $, toast } = App;
+      const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+      const mod = (n, m) => ((n % m) + m) % m;
+
+      const SHARP = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+      const { TUNINGS } = window; // js/tunings.js
+      const SOUNDS = [{ id: 'pluck', name: 'Corda' }, { id: 'tone', name: 'Tom contínuo' }];
+      const CHANNELS = [{ id: 'mix', name: 'Todas' }, { id: 0, name: 'Entrada 1' }, { id: 1, name: 'Entrada 2' }];
+      const A4_MIN = 430;
+      const A4_MAX = 450;
+      const IN_TUNE = 3;   // cents: afinada
+      const CLOSE = 10;    // cents: quase lá
+
+      // ---------- Estado ----------
+      const STORE_KEY = 'afinador:v1';
+      const state = { mode: 'mic', tuning: 'std', a4: 440, sound: 'pluck', repeat: true, volume: 0.7, deviceId: '', channel: 'mix' };
+      try { Object.assign(state, JSON.parse(localStorage.getItem(STORE_KEY)) || {}); } catch { /* ignora */ }
+      if (!['mic', 'ref'].includes(state.mode)) state.mode = 'mic';
+      if (!TUNINGS.some((t) => t.id === state.tuning)) state.tuning = 'std';
+      if (!SOUNDS.some((s) => s.id === state.sound)) state.sound = 'pluck';
+      if (!CHANNELS.some((c) => c.id === state.channel)) state.channel = 'mix';
+      state.a4 = clamp(Math.round(Number(state.a4)) || 440, A4_MIN, A4_MAX);
+      state.volume = clamp(Number(state.volume), 0, 1);
+      if (Number.isNaN(state.volume)) state.volume = 0.7;
+      const save = () => localStorage.setItem(STORE_KEY, JSON.stringify(state));
+
+      const tuning = () => TUNINGS.find((t) => t.id === state.tuning);
+      const hz = (midi) => state.a4 * 2 ** ((midi - 69) / 12);
+      const centsOff = (f, midi) => 1200 * Math.log2(f / hz(midi));
+      const octave = (midi) => Math.floor(midi / 12) - 1;
+
+      let locked = null;           // corda escolhida no modo microfone (null = automático)
+      let status = [];             // última leitura de cada corda: { cents, ok }
+
+      // ---------- Áudio ----------
+      let ctx = null;
+      let out = null;
+      function ensureAudio() {
+        if (!ctx) {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          out = ctx.createGain();
+          out.gain.value = state.volume;
+          out.connect(ctx.destination);
+        }
+        if (ctx.state === 'suspended') ctx.resume();
+      }
+
+      // Corda dedilhada (Karplus-Strong). O laço y[n] = (y[n-N] + y[n-N-1]) / 2 vibra com
+      // período N + ½ amostra; a velocidade de reprodução corrige para a frequência exata.
+      const plucks = new Map();
+      function pluckBuffer(midi) {
+        if (plucks.has(midi)) return plucks.get(midi);
+        const sr = ctx.sampleRate;
+        const N = Math.round(sr / (440 * 2 ** ((midi - 69) / 12)) - 0.5);
+        const len = Math.floor(sr * 3);
+        const buf = ctx.createBuffer(1, len, sr);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i <= N; i++) d[i] = Math.random() * 2 - 1;
+        for (let i = 1; i <= N; i++) d[i] = (d[i] + d[i - 1]) / 2; // ataque menos áspero
+        const decay = 0.997 + Math.min(0.0025, (64 - midi) * 0.0001);
+        for (let i = N + 1; i < len; i++) d[i] = decay * 0.5 * (d[i - N] + d[i - N - 1]);
+        const fade = Math.floor(sr * 0.2);
+        for (let i = 0; i < fade; i++) d[len - 1 - i] *= i / fade;
+        const p = { buf, freq: sr / (N + 0.5) };
+        plucks.set(midi, p);
+        return p;
+      }
+
+      let refString = null;  // corda tocando no modo referência
+      let refTimer = null;
+      let refVoice = null;   // nós da nota em andamento, para poder parar
+
+      function stopVoice() {
+        if (!refVoice) return;
+        const t = ctx.currentTime;
+        refVoice.gain.gain.cancelScheduledValues(t);
+        refVoice.gain.gain.setTargetAtTime(0, t, 0.03);
+        refVoice.nodes.forEach((n) => n.stop(t + 0.2));
+        refVoice = null;
+      }
+
+      function voice(midi) {
+        stopVoice();
+        const t = ctx.currentTime + 0.01;
+        const gain = ctx.createGain();
+        gain.connect(out);
+        if (state.sound === 'pluck') {
+          const p = pluckBuffer(midi);
+          const src = ctx.createBufferSource();
+          src.buffer = p.buf;
+          src.playbackRate.value = hz(midi) / p.freq;
+          gain.gain.value = 0.6;
+          src.connect(gain);
+          src.start(t);
+          refVoice = { gain, nodes: [src] };
+        } else {
+          // tom com alguns harmônicos: mais fácil de comparar com a corda do que um seno puro
+          const nodes = [[1, 0.5], [2, 0.22], [3, 0.1], [4, 0.05]].map(([h, a]) => {
+            const o = ctx.createOscillator();
+            o.frequency.value = hz(midi) * h;
+            const g = ctx.createGain();
+            g.gain.value = a;
+            o.connect(g).connect(gain);
+            o.start(t);
+            return o;
+          });
+          gain.gain.setValueAtTime(0, t);
+          gain.gain.linearRampToValueAtTime(0.7, t + 0.05);
+          refVoice = { gain, nodes };
+        }
+      }
+
+      function playRef(i) {
+        ensureAudio();
+        clearInterval(refTimer);
+        if (refString === i && (state.repeat || state.sound === 'tone')) { stopRef(); return; }
+        refString = i;
+        const midi = tuning().open[i];
+        voice(midi);
+        if (state.sound === 'pluck' && state.repeat) refTimer = setInterval(() => voice(midi), 2500);
+        else if (state.sound === 'pluck') refTimer = setTimeout(() => { refString = null; renderStrings(); renderRef(); }, 2500);
+        requestWakeLock();
+        renderStrings();
+        renderRef();
+      }
+
+      function stopRef() {
+        clearInterval(refTimer);
+        clearTimeout(refTimer);
+        if (ctx) stopVoice();
+        refString = null;
+        if (!stream) releaseWakeLock();
+        renderStrings();
+        renderRef();
+      }
+
+      // ---------- Microfone ----------
+      let stream = null;
+      let source = null;
+      let analyser = null;
+      let splitter = null;
+      let samples = null;
+      let raf = null;
+      let channelCount = 1;
+
+      async function startMic() {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          toast('Este navegador não deixa usar o microfone aqui (precisa de HTTPS).');
+          return;
+        }
+        ensureAudio();
+        stopRef();
+        const audio = (deviceId) => ({
+          deviceId: deviceId ? { exact: deviceId } : undefined,
+          // sem processamento: ele "corrige" o som da guitarra e atrapalha a leitura
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: { ideal: 2 },
+        });
+        try {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: audio(state.deviceId) });
+          } catch (err) {
+            if (!state.deviceId || !['OverconstrainedError', 'NotFoundError'].includes(err.name)) throw err;
+            stream = await navigator.mediaDevices.getUserMedia({ audio: audio('') }); // dispositivo salvo sumiu
+          }
+        } catch (err) {
+          stream = null;
+          toast(err.name === 'NotAllowedError' ? 'Permita o acesso ao microfone para afinar.' : 'Não deu pra abrir o microfone.');
+          return;
+        }
+        const track = stream.getAudioTracks()[0];
+        const settings = track.getSettings();
+        channelCount = settings.channelCount || 1;
+        if (settings.deviceId && settings.deviceId !== state.deviceId) { state.deviceId = settings.deviceId; save(); }
+        track.addEventListener('ended', () => { stopMic(); toast('A entrada de áudio foi desconectada.'); });
+
+        source = ctx.createMediaStreamSource(stream);
+        analyser = ctx.createAnalyser();
+        // ~85 ms de áudio: dá para a nota mais grave (C2) com folga
+        analyser.fftSize = ctx.sampleRate > 100000 ? 16384 : ctx.sampleRate > 50000 ? 8192 : 4096;
+        samples = new Float32Array(analyser.fftSize);
+        // o analisador precisa estar ligado à saída em alguns navegadores; ganho 0 = mudo
+        const mute = ctx.createGain();
+        mute.gain.value = 0;
+        analyser.connect(mute).connect(ctx.destination);
+        route();
+
+        history = [];
+        reading = null;
+        lastHeard = 0;
+        lastDetect = 0;
+        requestWakeLock();
+        await listDevices();
+        renderMic();
+        raf = requestAnimationFrame(loop);
+      }
+
+      // Escolhe o canal: numa interface de áudio cada entrada (guitarra, microfone…) é um canal
+      function route() {
+        source.disconnect();
+        splitter?.disconnect();
+        splitter = null;
+        if (state.channel === 'mix' || channelCount < 2) {
+          source.connect(analyser);
+        } else {
+          splitter = ctx.createChannelSplitter(channelCount);
+          source.connect(splitter);
+          splitter.connect(analyser, Math.min(state.channel, channelCount - 1));
+        }
+      }
+
+      function stopMic() {
+        cancelAnimationFrame(raf);
+        stream?.getTracks().forEach((t) => t.stop());
+        source?.disconnect();
+        splitter?.disconnect();
+        analyser?.disconnect();
+        stream = source = splitter = analyser = null;
+        reading = null;
+        if (refString === null) releaseWakeLock();
+        renderMic();
+        renderMeter();
+      }
+
+      async function listDevices() {
+        if (!navigator.mediaDevices?.enumerateDevices) return;
+        const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
+        const sel = $('device');
+        sel.innerHTML = '';
+        // sem permissão o navegador não mostra os nomes
+        const named = devices.some((d) => d.label);
+        if (!named) {
+          sel.append(new Option('Ligue o microfone para ver as entradas', ''));
+          sel.disabled = true;
+          return;
+        }
+        sel.disabled = false;
+        devices.forEach((d, i) => sel.append(new Option(d.label || `Entrada ${i + 1}`, d.deviceId)));
+        if (devices.some((d) => d.deviceId === state.deviceId)) sel.value = state.deviceId;
+      }
+      navigator.mediaDevices?.addEventListener?.('devicechange', listDevices);
+
+      // ---------- Leitura ----------
+      let history = [];      // últimas frequências da mesma nota
+      let reading = null;    // { freq, string, cents }
+      let shownCents = 0;    // ponteiro suavizado
+      let lastHeard = 0;
+      let lastDetect = 0;
+      let inTuneSince = 0;
+      const HOLD_MS = 1500;  // mantém a última leitura depois que a corda para de soar
+
+      // Corda mais próxima da frequência (em cents), ou a corda travada
+      function pickString(f) {
+        const open = tuning().open;
+        if (locked !== null) return locked;
+        let best = 0;
+        open.forEach((m, i) => { if (Math.abs(centsOff(f, m)) < Math.abs(centsOff(f, open[best]))) best = i; });
+        return best;
+      }
+
+      function median(a) {
+        const s = [...a].sort((x, y) => x - y);
+        return s[s.length >> 1];
+      }
+
+      function loop(now) {
+        raf = requestAnimationFrame(loop);
+        if (now - lastDetect >= 33) {
+          lastDetect = now;
+          analyser.getFloatTimeDomainData(samples);
+          const r = Pitch.detect(samples, ctx.sampleRate);
+          $('level').style.width = `${clamp((20 * Math.log10(r.rms + 1e-9) + 60) / 60, 0, 1) * 100}%`;
+          $('level').classList.toggle('hot', r.rms > 0.7);
+          if (r.freq) {
+            // nota nova (mais de meio tom de diferença): recomeça a média
+            if (history.length && Math.abs(1200 * Math.log2(r.freq / median(history))) > 50) history = [];
+            history.push(r.freq);
+            if (history.length > 7) history.shift();
+            if (history.length >= 2) {
+              const f = median(history);
+              const i = pickString(f);
+              const cents = centsOff(f, tuning().open[i]);
+              reading = { freq: f, string: i, cents };
+              lastHeard = now;
+              const ok = Math.abs(cents) <= IN_TUNE;
+              if (ok && !inTuneSince) inTuneSince = now;
+              if (!ok) inTuneSince = 0;
+              // só marca a corda como afinada depois de meio segundo dentro da faixa
+              status[i] = { cents, ok: ok && now - inTuneSince > 500 };
+            }
+          } else if (now - lastHeard > 120) {
+            history = [];
+            inTuneSince = 0;
+          }
+          if (reading && now - lastHeard > HOLD_MS) reading = null;
+          renderMeter(now);
+          renderStrings();
+        }
+      }
+
+      // ---------- Tela ----------
+      function noteLabel(midi) {
+        const t = tuning();
+        const i = t.open.indexOf(midi);
+        return i >= 0 ? t.names[i] : SHARP[mod(midi, 12)];
+      }
+
+      function renderMeter(now = performance.now()) {
+        const meter = $('meter');
+        if (!reading) {
+          $('note').textContent = '—';
+          $('freq').textContent = '';
+          $('advice').textContent = stream ? 'Toque uma corda' : 'Ligue o microfone para começar';
+          meter.className = 'meter idle';
+          shownCents += (0 - shownCents) * 0.2;
+          $('needle').style.left = `${50 + shownCents}%`;
+          return;
+        }
+        const { freq, string, cents } = reading;
+        const midi = tuning().open[string];
+        const stale = now - lastHeard > 200;
+        shownCents += (clamp(cents, -50, 50) - shownCents) * 0.35;
+        $('needle').style.left = `${50 + shownCents}%`;
+        $('note').innerHTML = `${noteLabel(midi)}<sub>${octave(midi)}</sub>`;
+        // nota tocada, quando está longe do alvo (ex.: corda muito frouxa)
+        const heard = Math.round(69 + 12 * Math.log2(freq / state.a4));
+        const far = Math.abs(cents) > 50;
+        const c = Math.round(cents);
+        $('freq').textContent = `${freq.toFixed(1)} Hz · ${c > 0 ? '+' : ''}${c} cents${far ? ` · está em ${SHARP[mod(heard, 12)]}${octave(heard)}` : ''}`;
+        let cls, text;
+        if (Math.abs(cents) <= IN_TUNE) { cls = 'ok'; text = 'Afinada ✓'; }
+        else if (cents < 0) { cls = Math.abs(cents) <= CLOSE ? 'close' : 'off'; text = far ? '↑ Aperte bastante' : Math.abs(cents) <= CLOSE ? '↑ Aperte um pouquinho' : '↑ Aperte'; }
+        else { cls = Math.abs(cents) <= CLOSE ? 'close' : 'off'; text = far ? '↓ Solte bastante' : Math.abs(cents) <= CLOSE ? '↓ Solte um pouquinho' : '↓ Solte'; }
+        $('advice').textContent = text;
+        meter.className = `meter ${cls}${stale ? ' stale' : ''}${far ? ' far' : ''}`;
+      }
+
+      function renderRef() {
+        if (refString === null) {
+          $('ref-note').textContent = '—';
+          $('ref-freq').textContent = 'Toque numa corda para ouvir a nota';
+          return;
+        }
+        const midi = tuning().open[refString];
+        $('ref-note').innerHTML = `${noteLabel(midi)}<sub>${octave(midi)}</sub>`;
+        $('ref-freq').textContent = `${6 - refString}ª corda · ${hz(midi).toFixed(2)} Hz`;
+      }
+
+      let stringEls = [];
+      function buildStrings() {
+        const box = $('strings');
+        box.innerHTML = '';
+        const t = tuning();
+        stringEls = t.open.map((m, i) => {
+          const b = document.createElement('button');
+          b.className = 'string';
+          b.innerHTML = `<span class="num">${6 - i}ª</span><span class="name">${t.names[i]}<sub>${octave(m)}</sub></span><span class="mark"></span>`;
+          b.onclick = () => onString(i);
+          box.append(b);
+          return b;
+        });
+        renderStrings();
+      }
+
+      function renderStrings() {
+        stringEls.forEach((b, i) => {
+          const s = status[i];
+          const mic = state.mode === 'mic';
+          b.classList.toggle('active', mic ? (locked !== null ? locked === i : reading?.string === i) : refString === i);
+          b.classList.toggle('locked', mic && locked === i);
+          let mark = '';
+          let cls = '';
+          if (mic && s) {
+            if (s.ok) { mark = '✓'; cls = 'ok'; }
+            else if (Math.abs(s.cents) <= IN_TUNE) { mark = '·'; cls = 'close'; }
+            else { mark = s.cents < 0 ? '↑' : '↓'; cls = Math.abs(s.cents) <= CLOSE ? 'close' : 'off'; }
+          }
+          const el = b.querySelector('.mark');
+          el.textContent = mark;
+          el.className = `mark ${cls}`;
+          b.setAttribute('aria-label', `${6 - i}ª corda, ${tuning().names[i]}${mic && s ? (s.ok ? ', afinada' : s.cents < 0 ? ', apertar' : ', soltar') : ''}`);
+        });
+        $('strings-hint').textContent = state.mode === 'mic'
+          ? (locked !== null ? `Só a ${6 - locked}ª corda. Toque nela de novo para voltar ao automático.` : 'Automático: reconhece a corda tocada. Toque numa corda para fixar.')
+          : (state.sound === 'pluck' && !state.repeat ? 'Toque numa corda para ouvir a nota.' : 'Toque numa corda para ouvir; de novo para parar.');
+      }
+
+      function onString(i) {
+        if (state.mode === 'ref') playRef(i);
+        else {
+          locked = locked === i ? null : i;
+          history = [];
+          renderStrings();
+        }
+      }
+
+      function renderMic() {
+        const on = !!stream;
+        $('mic').classList.toggle('playing', on);
+        $('mic').textContent = on ? '■' : '🎤';
+        $('mic').setAttribute('aria-label', on ? 'Desligar o microfone' : 'Ligar o microfone');
+        const box = $('channels');
+        box.hidden = !on || channelCount < 2;
+        if (!box.hidden) renderChips(box, CHANNELS, (c) => c.id === state.channel, (c) => { state.channel = c.id; save(); route(); history = []; renderMic(); });
+        if (!on) $('level').style.width = '0';
+      }
+
+      function renderChips(el, items, isActive, onPick) {
+        el.innerHTML = '';
+        for (const it of items) {
+          const b = document.createElement('button');
+          b.textContent = it.name;
+          b.classList.toggle('active', isActive(it));
+          b.onclick = () => onPick(it);
+          el.append(b);
+        }
+      }
+
+      function renderMode() {
+        const mic = state.mode === 'mic';
+        document.querySelectorAll('#modes button').forEach((b) => {
+          const on = b.dataset.mode === state.mode;
+          b.classList.toggle('active', on);
+          b.setAttribute('aria-selected', on);
+        });
+        $('meter').hidden = !mic;
+        $('mic-transport').hidden = !mic;
+        $('mic-panel').hidden = !mic;
+        $('ref-display').hidden = mic;
+        $('ref-panel').hidden = mic;
+        $('hint').innerHTML = mic
+          ? 'Com interface de áudio, escolha ela em <strong>Entrada</strong> e a entrada onde a guitarra está ligada. Toque uma corda por vez e deixe soar.'
+          : 'Toque a corda junto com a nota: quando estiver quase igual, o som "ondula"; afine até a ondulação sumir.';
+        renderChips($('sounds'), SOUNDS, (s) => s.id === state.sound, (s) => { state.sound = s.id; save(); stopRef(); renderMode(); });
+        $('repeat').checked = state.repeat;
+        $('repeat').closest('label').hidden = state.sound !== 'pluck';
+        renderStrings();
+      }
+
+      function setMode(m) {
+        if (m === state.mode) return;
+        state.mode = m;
+        save();
+        if (m === 'ref') stopMic();
+        else stopRef();
+        renderMode();
+      }
+
+      function renderA4() {
+        $('a4').textContent = `${state.a4} Hz`;
+      }
+
+      // ---------- Tela ligada enquanto afina ----------
+      let wakeLock = null;
+      async function requestWakeLock() {
+        if (wakeLock) return;
+        try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* sem suporte */ }
+      }
+      function releaseWakeLock() {
+        wakeLock?.release().catch(() => {});
+        wakeLock = null;
+      }
+      document.addEventListener('visibilitychange', () => {
+        if ((stream || refString !== null) && document.visibilityState === 'visible') { wakeLock = null; requestWakeLock(); }
+      });
+
+      // ---------- Controles ----------
+      document.querySelectorAll('#modes button').forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+      $('mic').onclick = () => (stream ? stopMic() : startMic());
+      $('device').onchange = async (e) => {
+        state.deviceId = e.target.value;
+        save();
+        if (stream) { stopMic(); await startMic(); }
+      };
+      $('tuning').innerHTML = TUNINGS.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+      $('tuning').value = state.tuning;
+      $('tuning').onchange = (e) => {
+        state.tuning = e.target.value;
+        save();
+        status = [];
+        locked = null;
+        history = [];
+        const was = refString;
+        stopRef();
+        buildStrings();
+        if (was !== null && state.mode === 'ref') playRef(was);
+      };
+      const setA4 = (v) => {
+        state.a4 = clamp(v, A4_MIN, A4_MAX);
+        save();
+        status = [];
+        renderA4();
+        renderStrings();
+        if (refString !== null) { const i = refString; refString = null; playRef(i); }
+      };
+      $('a4-minus').onclick = () => setA4(state.a4 - 1);
+      $('a4-plus').onclick = () => setA4(state.a4 + 1);
+      $('repeat').onchange = (e) => { state.repeat = e.target.checked; save(); stopRef(); };
+      $('volume').value = state.volume;
+      $('volume').addEventListener('input', (e) => {
+        state.volume = Number(e.target.value);
+        if (out) out.gain.value = state.volume;
+        save();
+      });
+
+      // 1–6 = corda (1ª = mais aguda), espaço = liga/desliga
+      document.addEventListener('keydown', (e) => {
+        if (e.target.matches('select, input')) return;
+        const n = Number(e.key);
+        if (n >= 1 && n <= 6) onString(6 - n);
+        else if (e.key === ' ' && !e.target.matches('button')) {
+          e.preventDefault();
+          if (state.mode === 'mic') $('mic').click();
+          else stopRef();
+        }
+      });
+
+      // ---------- Início ----------
+      buildStrings();
+      renderA4();
+      renderMode();
+      renderMic();
+      renderMeter();
+      listDevices();
+
+      // gancho para testes automatizados
+      window.__afinador = { get state() { return state; }, get reading() { return reading; }, get status() { return status; }, startMic, stopMic, playRef, stopRef, setMode };
+    })();
+    </script>
+  </body>
+</html>
