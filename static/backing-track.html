@@ -60,7 +60,7 @@
       <section class="panel">
         <h2>Para improvisar</h2>
         <div class="scale-links" id="scales"></div>
-        <p class="panel-note">Abre a escala no braço da guitarra, no mesmo tom.</p>
+        <p class="panel-note">Abre a escala no braço da guitarra ou os acordes do tom.</p>
       </section>
 
       <section class="panel">
@@ -75,6 +75,7 @@
     <div class="toast" id="toast" hidden></div>
 
     <script src="/js/common.js?v=9a1c26f3"></script>
+    <script src="/js/harmony.js?v=d676d04e"></script>
     <script src="/js/sampler.js?v=d17a215b"></script>
     <script src="/js/drums.js?v=feb2f285"></script>
     <script src="/js/bass.js?v=6f05d30e"></script>
@@ -87,64 +88,9 @@
       const MIN_BPM = 50;
       const MAX_BPM = 200;
 
-      // ---------- Teoria ----------
-      const MAJOR = [0, 2, 4, 5, 7, 9, 11];
-      const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
-      const SHARP = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
-      const FLAT = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
-      // Grafia usual da tônica em cada modo (D♭ maior, mas C♯ menor...)
-      const ROOT_LABELS = {
-        major: ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'],
-        minor: ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'B♭', 'B'],
-      };
-      // Tons naturais que usam bemóis: F maior; Dm, Gm, Cm, Fm
-      const FLAT_NATURALS = { major: [5], minor: [0, 2, 5, 7] };
-      const MODES = [{ id: 'major', name: 'Maior' }, { id: 'minor', name: 'Menor' }];
-
-      const QUALITIES = {
-        maj: { iv: [0, 4, 7], suffix: '' },
-        min: { iv: [0, 3, 7], suffix: 'm' },
-        dom7: { iv: [0, 4, 7, 10], suffix: '7' },
-        min7: { iv: [0, 3, 7, 10], suffix: 'm7' },
-        maj7: { iv: [0, 4, 7, 11], suffix: '7M' },
-      };
-
-      // Graus em algarismos romanos: maiúsculo = maior, minúsculo = menor
-      function parseChord(tok) {
-        const [, acc, rn, ext = ''] = tok.match(/^(b?)(VII|VI|IV|V|III|II|I)(maj7|7)?$/i);
-        const upper = rn === rn.toUpperCase();
-        const quality = upper ? (ext === '7' ? 'dom7' : ext === 'maj7' ? 'maj7' : 'maj') : (ext === '7' ? 'min7' : 'min');
-        return {
-          semi: mod(MAJOR[ROMAN.indexOf(rn.toUpperCase())] - (acc ? 1 : 0), 12),
-          quality,
-          roman: (acc ? '♭' : '') + rn + (ext === 'maj7' ? '7M' : ext),
-        };
-      }
-
-      const P = (id, name, tag, chords, style, scales, fixed = false) => ({ id, name, tag, chords: chords.split(' ').map(parseChord), style, scales, fixed });
-      const PROGRESSIONS = {
-        major: [
-          P('pop', 'I–V–vi–IV', 'Pop', 'I V vi IV', 'ballad', ['pent-maj', 'major']),
-          P('rock', 'I–IV–I–V', 'Rock', 'I IV I V', 'rock', ['pent-maj', 'major']),
-          P('fifties', 'I–vi–IV–V', 'Anos 50', 'I vi IV V', 'ballad', ['pent-maj', 'major']),
-          P('mixo', 'I–♭VII–IV–I', 'Rock clássico', 'I bVII IV I', 'rock', ['mixolydian', 'pent-maj']),
-          P('blues', 'Blues 12 compassos', 'Blues', 'I7 IV7 I7 I7 IV7 IV7 I7 I7 V7 IV7 I7 V7', 'shuffle', ['pent-min', 'blues', 'pent-maj'], true),
-          P('jazz', 'ii–V–I', 'Jazz', 'ii7 V7 Imaj7 Imaj7', 'ballad', ['major', 'pent-maj']),
-          P('vamp', 'I–IV', 'Vamp', 'I IV', 'rock', ['pent-maj', 'mixolydian']),
-        ],
-        minor: [
-          P('epic', 'i–♭VI–♭III–♭VII', 'Épico', 'i bVI bIII bVII', 'ballad', ['pent-min', 'minor']),
-          P('minrock', 'i–♭VI–♭VII–i', 'Rock', 'i bVI bVII i', 'rock', ['pent-min', 'minor']),
-          P('andaluz', 'i–♭VII–♭VI–V', 'Andaluza', 'i bVII bVI V', 'rock', ['harm-minor', 'pent-min']),
-          P('mblues', 'Blues menor', 'Blues', 'i7 iv7 i7 i7 iv7 iv7 i7 i7 bVI7 V7 i7 V7', 'shuffle', ['pent-min', 'blues'], true),
-          P('dorian', 'i–IV', 'Dórico', 'i7 IV7', 'rock', ['dorian', 'pent-min']),
-          P('vampmin', 'i–iv', 'Vamp', 'i iv', 'ballad', ['pent-min', 'minor']),
-        ],
-      };
-      const SCALE_NAMES = {
-        'pent-maj': 'Pentatônica maior', 'pent-min': 'Pentatônica menor', blues: 'Blues', major: 'Maior', minor: 'Menor natural',
-        mixolydian: 'Mixolídio', dorian: 'Dórico', 'harm-minor': 'Menor harmônica',
-      };
+      const {
+        SHARP, FLAT, ROOT_LABELS, FLAT_NATURALS, MODES, QUALITIES, PROGRESSIONS, SCALE_NAMES, voicing,
+      } = Harmony; // js/harmony.js
 
       // ---------- Estilos (48 ticks por compasso 4/4: 12 por tempo, cabe colcheia, tercina e semicolcheia) ----------
       const eighths = (fn) => Array.from({ length: 8 }, (_, i) => fn(i * 6, i));
@@ -191,6 +137,13 @@
         const s = JSON.parse(localStorage.getItem(STORE_KEY)) || {};
         Object.assign(state, s, { prog: { ...state.prog, ...s.prog }, mix: { ...state.mix, ...s.mix } });
       } catch { /* ignora */ }
+      // Link de outra ferramenta (ex.: campo harmônico): #root=9&mode=minor&prog=epic
+      const hash = new URLSearchParams(location.hash.slice(1));
+      if (hash.has('root')) state.root = Number(hash.get('root'));
+      if (PROGRESSIONS[hash.get('mode')]) state.mode = hash.get('mode');
+      const linked = PROGRESSIONS[state.mode]?.find((p) => p.id === hash.get('prog'));
+      if (linked) { state.prog[state.mode] = linked.id; state.style = linked.style; }
+      if (location.hash) history.replaceState(null, '', location.pathname); // daqui em diante vale o que for escolhido na tela
       state.root = mod(Math.round(Number(state.root)) || 0, 12);
       if (!PROGRESSIONS[state.mode]) state.mode = 'minor';
       for (const m of Object.keys(PROGRESSIONS)) if (!PROGRESSIONS[m].some((p) => p.id === state.prog[m])) state.prog[m] = PROGRESSIONS[m][0].id;
@@ -343,19 +296,6 @@
       }
 
       // Escolhe a inversão mais perto do dó central: os acordes ficam numa região só
-      function voicing(pc, quality) {
-        let best = null;
-        for (const base of [48, 60]) {
-          let notes = QUALITIES[quality].iv.map((i) => base + pc + i);
-          for (let inv = 0; inv < notes.length; inv++) {
-            const avg = notes.reduce((a, b) => a + b, 0) / notes.length;
-            const score = Math.abs(avg - 62);
-            if (!best || score < best.score) best = { notes: [...notes], score };
-            notes = [...notes.slice(1), notes[0] + 12];
-          }
-        }
-        return best.notes;
-      }
 
       const BASS_IV = { r: 0, '5': 7, '6': 9, b7: 10, '8': 12 };
 
@@ -588,7 +528,8 @@
         }, (l) => l.name, () => p.fixed);
 
         $('scales').innerHTML = p.scales.map((id) =>
-          `<a href="/escalas#root=${state.root}&scale=${id}">${ROOT_LABELS[state.mode][state.root]} ${SCALE_NAMES[id].toLowerCase()}</a>`).join('');
+          `<a href="/escalas#root=${state.root}&scale=${id}">${ROOT_LABELS[state.mode][state.root]} ${SCALE_NAMES[id].toLowerCase()}</a>`).join('')
+          + `<a href="/campo-harmonico#root=${state.root}&mode=${state.mode}">Campo harmônico de ${keyLabel()}</a>`;
 
         $('count-in').checked = state.countIn;
         $('bpm').textContent = state.bpm;
@@ -663,6 +604,7 @@
       });
 
       // ---------- Início ----------
+      if (hash.size) save(); // o tom vindo do link fica guardado
       renderControls();
       renderNow(null);
 
