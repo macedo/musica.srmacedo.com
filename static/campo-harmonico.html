@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#6366f1">
+    <title>Campo Harmônico · SrMacedo Música</title>
+    <meta name="description" content="Campo harmônico e círculo das quintas: os acordes de cada tom, com graus, funções (tônica, subdominante, dominante) e progressões comuns.">
+    <link rel="stylesheet" href="/css/application.css?v=1aebe6b0">
+    <link rel="stylesheet" href="/css/base.css?v=584ccd30">
+    <link rel="stylesheet" href="/css/campo-harmonico.css?v=f661400d">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/images/icon.png">
+  </head>
+  <body>
+    <header class="page-header">
+      <a href="/" class="back-btn">← Menu</a>
+      <h1>Campo Harmônico</h1>
+      <div></div>
+    </header>
+
+    <main class="ch-page">
+      <section class="circle-wrap">
+        <svg class="circle" id="circle" viewBox="0 0 320 320" role="group" aria-label="Círculo das quintas"></svg>
+        <p class="circle-note">Fora: tons maiores · dentro: menores relativos. Toque para escolher o tom.</p>
+      </section>
+
+      <div class="ch-options">
+        <div class="chips" id="modes"></div>
+        <div class="chips" id="kinds"></div>
+      </div>
+
+      <section class="panel">
+        <h2>Acordes de <span class="chosen" id="key-name"></span></h2>
+        <div class="field" id="field"></div>
+        <button class="btn btn-secondary play-all" id="play-field">▶ Ouvir o campo</button>
+        <p class="panel-note" id="field-note"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Funções</h2>
+        <ul class="funcs">
+          <li><b class="fn fn-T">T</b><span><strong>Tônica</strong>: repouso, a sensação de "casa".</span></li>
+          <li><b class="fn fn-SD">SD</b><span><strong>Subdominante</strong>: se afasta da tônica e prepara o movimento.</span></li>
+          <li><b class="fn fn-D">D</b><span><strong>Dominante</strong>: tensão que pede para voltar à tônica.</span></li>
+        </ul>
+        <p class="panel-note">Acordes da mesma função costumam poder trocar de lugar: experimente vi no lugar de I, ou ii no lugar de IV.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Progressões comuns em <span class="chosen" id="key-name-2"></span></h2>
+        <div class="progs" id="progs"></div>
+        <p class="panel-note">Acordes em cinza não são do campo: vêm emprestados de outra escala.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Para praticar</h2>
+        <div class="links" id="links"></div>
+      </section>
+
+      <p class="hint">Toque num acorde para ouvir.</p>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <script src="/js/common.js?v=9a1c26f3"></script>
+    <script src="/js/harmony.js?v=d676d04e"></script>
+    <script src="/js/sampler.js?v=d17a215b"></script>
+    <script src="/js/piano.js?v=b868dad0"></script>
+    <script>
+    (() => {
+      const { $, toast } = App;
+      const { MAJOR, ROMAN, ROOT_LABELS, MODES, QUALITIES, PROGRESSIONS, SCALE_NAMES, voicing } = Harmony;
+      const mod = (n, m) => ((n % m) + m) % m;
+
+      // ---------- Teoria ----------
+      const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+      const LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
+      const ACC = { '-2': '𝄫', '-1': '♭', 0: '', 1: '♯', 2: '𝄪' };
+      const STEPS = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10] };
+      const KINDS = [{ id: false, name: 'Tríades' }, { id: true, name: 'Tétrades' }];
+
+      // terça e quinta (e sétima) a partir da fundamental, em semitons
+      const TRIADS = { '4,7': { suffix: '', kind: 'maj' }, '3,7': { suffix: 'm', kind: 'min' }, '3,6': { suffix: '°', kind: 'dim' }, '4,8': { suffix: '+', kind: 'aug' } };
+      const TETRADS = { '4,7,11': '7M', '4,7,10': '7', '3,7,10': 'm7', '3,6,10': 'm7(♭5)', '3,7,11': 'm(7M)', '4,8,11': '7M(♯5)', '3,6,9': '°' };
+      const FUNCS = { major: ['T', 'SD', 'T', 'SD', 'D', 'T', 'D'], minor: ['T', 'SD', 'T', 'SD', 'D', 'SD', 'D'] };
+      const FUNC_NAMES = { T: 'tônica', SD: 'subdominante', D: 'dominante' };
+
+      // Nota escrita com a letra pedida (F♯ e G♭ são a mesma tecla, mas não a mesma nota no tom)
+      function spell(letter, pc) {
+        const acc = mod(pc - LETTER_PC[letter] + 6, 12) - 6;
+        return { letter, pc: mod(pc, 12), acc, name: LETTERS[letter] + ACC[acc] };
+      }
+
+      const rootLetter = (root = state.root, mode = state.mode) => LETTERS.indexOf(ROOT_LABELS[mode][root][0]);
+
+      function scaleNotes(root = state.root, mode = state.mode) {
+        const rl = rootLetter(root, mode);
+        return STEPS[mode].map((s, i) => spell((rl + i) % 7, root + s));
+      }
+
+      // Acorde empilhando terças da escala a partir do grau i
+      function chordOn(notes, i, sevenths) {
+        const tones = [0, 2, 4, ...(sevenths ? [6] : [])].map((k) => notes[(i + k) % 7]);
+        const iv = tones.map((t) => mod(t.pc - tones[0].pc, 12));
+        const triad = TRIADS[iv.slice(1, 3).join()];
+        const suffix = sevenths ? TETRADS[iv.slice(1).join()] : triad.suffix;
+        const flat = mod(tones[0].pc - notes[0].pc, 12) < MAJOR[i] ? '♭' : '';
+        const up = triad.kind === 'maj' || triad.kind === 'aug';
+        // tríades: maiúsculo = maior, minúsculo = menor; tétrades na cifra brasileira (IIm7, V7, I7M)
+        const roman = sevenths
+          ? flat + ROMAN[i] + suffix
+          : flat + (up ? ROMAN[i] : ROMAN[i].toLowerCase()) + (triad.kind === 'dim' ? '°' : triad.kind === 'aug' ? '+' : '');
+        return { root: tones[0], tones, iv, kind: triad.kind, name: tones[0].name + suffix, roman };
+      }
+
+      function field() {
+        const notes = scaleNotes();
+        const chords = notes.map((_, i) => ({ ...chordOn(notes, i, state.sevenths), fn: FUNCS[state.mode][i] }));
+        // no menor, a dominante de verdade vem da menor harmônica (sétimo grau meio tom acima)
+        let extra = null;
+        if (state.mode === 'minor') {
+          const harm = [...notes];
+          harm[6] = spell(notes[6].letter, notes[6].pc + 1);
+          extra = { ...chordOn(harm, 4, state.sevenths), fn: 'D', raised: harm[6].name, lowered: notes[6].name };
+        }
+        return { notes, chords, extra };
+      }
+
+      const keyLabel = (root = state.root, mode = state.mode) => ROOT_LABELS[mode][root] + (mode === 'minor' ? 'm' : '');
+
+      function signature(notes) {
+        const sharps = notes.filter((n) => n.acc > 0).length;
+        const flats = notes.filter((n) => n.acc < 0).length;
+        if (!sharps && !flats) return 'sem acidentes';
+        const n = sharps || flats;
+        return `${n} ${sharps ? (n > 1 ? 'sustenidos' : 'sustenido') : (n > 1 ? 'bemóis' : 'bemol')}`;
+      }
+
+      // ---------- Estado ----------
+      const STORE_KEY = 'campo-harmonico:v1';
+      const state = { root: 0, mode: 'major', sevenths: false };
+      try { Object.assign(state, JSON.parse(localStorage.getItem(STORE_KEY)) || {}); } catch { /* ignora */ }
+      const hash = new URLSearchParams(location.hash.slice(1));
+      if (hash.has('root')) state.root = Number(hash.get('root'));
+      if (STEPS[hash.get('mode')]) state.mode = hash.get('mode');
+      state.root = mod(Math.round(Number(state.root)) || 0, 12);
+      if (!STEPS[state.mode]) state.mode = 'major';
+      state.sevenths = state.sevenths === true;
+
+      function save() {
+        localStorage.setItem(STORE_KEY, JSON.stringify(state));
+        history.replaceState(null, '', `#root=${state.root}&mode=${state.mode}`);
+      }
+
+      // ---------- Som ----------
+      let ctx = null;
+      let out = null;
+      let playback = null; // { gain, timers } da sequência tocando
+
+      function ensureAudio() {
+        if (!ctx) {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          out = ctx.createGain();
+          out.gain.value = 0.9;
+          out.connect(ctx.destination);
+        }
+        if (ctx.state === 'suspended') ctx.resume();
+      }
+
+      // Piano com samples; se não carregar, um som simples sintetizado
+      let pianoOk = null;
+      async function loadPiano() {
+        if (pianoOk === null || pianoOk === false) {
+          pianoOk = await Piano.load(ctx);
+          if (!pianoOk) toast('Não deu pra carregar o piano; usando som sintetizado.');
+        }
+        return pianoOk;
+      }
+
+      function chordAt(dest, midis, t, dur) {
+        for (const m of midis) {
+          const at = t + Math.random() * 0.015;
+          if (Piano.play(ctx, dest, m, at, dur, 0.5 / Math.sqrt(midis.length))) continue;
+          const o = ctx.createOscillator();
+          o.type = 'triangle';
+          o.frequency.value = 440 * 2 ** ((m - 69) / 12);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0, at);
+          g.gain.linearRampToValueAtTime(0.18 / Math.sqrt(midis.length), at + 0.02);
+          g.gain.setTargetAtTime(0, at + dur, 0.12);
+          o.connect(g).connect(dest);
+          o.start(at);
+          o.stop(at + dur + 1);
+        }
+      }
+
+      function stopPlayback() {
+        if (!playback) return;
+        playback.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+        playback.timers.forEach(clearTimeout);
+        playback.onEnd?.();
+        playback = null;
+      }
+
+      // Toca uma sequência de acordes; onStep(i) marca na tela o que está soando
+      async function playSequence(items, step, onStep, onEnd) {
+        ensureAudio();
+        stopPlayback();
+        const pb = { gain: ctx.createGain(), timers: [], onEnd };
+        playback = pb;
+        pb.gain.connect(out);
+        await loadPiano();
+        if (playback !== pb) return; // outra coisa começou enquanto carregava
+        const t0 = ctx.currentTime + 0.05;
+        items.forEach((midis, i) => {
+          chordAt(pb.gain, midis, t0 + i * step, step * 0.92);
+          pb.timers.push(setTimeout(() => onStep(i), (0.05 + i * step) * 1000));
+        });
+        pb.timers.push(setTimeout(() => { if (playback === pb) { playback = null; onEnd?.(); } }, (0.05 + items.length * step) * 1000));
+      }
+
+      const midisOf = (c) => voicing(c.root.pc, c.iv);
+
+      // ---------- Círculo das quintas ----------
+      const CX = 160;
+      const CY = 160;
+      const RINGS = { outer: [150, 106], inner: [106, 66] };
+
+      function wedge(i, [r1, r0]) {
+        const a0 = ((i * 30 - 105) * Math.PI) / 180;
+        const a1 = ((i * 30 - 75) * Math.PI) / 180;
+        const p = (r, a) => `${(CX + r * Math.cos(a)).toFixed(2)} ${(CY + r * Math.sin(a)).toFixed(2)}`;
+        return `M ${p(r1, a0)} A ${r1} ${r1} 0 0 1 ${p(r1, a1)} L ${p(r0, a1)} A ${r0} ${r0} 0 0 0 ${p(r0, a0)} Z`;
+      }
+
+      function labelPos(i, [r1, r0]) {
+        const a = ((i * 30 - 90) * Math.PI) / 180;
+        const r = (r1 + r0) / 2;
+        return [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+      }
+
+      function renderCircle() {
+        // posição do maior relativo: 7 semitons (uma quinta) por casa
+        const rel = state.mode === 'major' ? state.root : mod(state.root + 3, 12);
+        const k = mod(rel * 7, 12);
+        const romans = state.mode === 'major'
+          ? { outer: ['IV', 'I', 'V'], inner: ['ii', 'vi', 'iii'] }
+          : { outer: ['♭VI', '♭III', '♭VII'], inner: ['iv', 'i', 'v'] };
+        let svg = '';
+        for (const ring of ['outer', 'inner']) {
+          for (let i = 0; i < 12; i++) {
+            const pc = mod(i * 7, 12);
+            const mode = ring === 'outer' ? 'major' : 'minor';
+            const root = ring === 'outer' ? pc : mod(pc + 9, 12);
+            const off = mod(i - k + 1, 12); // 0, 1, 2 = vizinhos do tom (IV, I, V)
+            const inKey = off <= 2;
+            const selected = root === state.root && mode === state.mode;
+            const [x, y] = labelPos(i, RINGS[ring]);
+            const name = keyLabel(root, mode);
+            svg += `<g class="cell ${ring}${inKey ? ' in-key' : ''}${selected ? ' selected' : ''}" data-root="${root}" data-mode="${mode}" tabindex="0" role="button" aria-label="${name}${selected ? ', escolhido' : ''}">
+              <path d="${wedge(i, RINGS[ring])}"/>
+              <text x="${x.toFixed(1)}" y="${(y + (inKey ? -2 : 4)).toFixed(1)}" class="name">${name}</text>
+              ${inKey ? `<text x="${x.toFixed(1)}" y="${(y + 12).toFixed(1)}" class="roman">${romans[ring][off]}</text>` : ''}
+            </g>`;
+          }
+        }
+        const notes = scaleNotes();
+        const relNote = state.mode === 'major' ? notes[5].name + 'm' : notes[2].name;
+        svg += `<text x="${CX}" y="${CY - 6}" class="center-key">${keyLabel()}</text>
+          <text x="${CX}" y="${CY + 16}" class="center-sub">${signature(notes)}</text>
+          <text x="${CX}" y="${CY + 32}" class="center-sub">relativa: ${relNote}</text>`;
+        $('circle').innerHTML = svg;
+      }
+
+      $('circle').addEventListener('click', (e) => {
+        const g = e.target.closest('.cell');
+        if (g) setKey(Number(g.dataset.root), g.dataset.mode);
+      });
+      $('circle').addEventListener('keydown', (e) => {
+        const g = e.target.closest('.cell');
+        if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setKey(Number(g.dataset.root), g.dataset.mode); }
+      });
+
+      // ---------- Campo ----------
+      function chordRow(c, i, extraInfo = '') {
+        return `<button class="chord fn-${c.fn}" data-i="${i}">
+          <span class="roman">${c.roman}</span>
+          <strong class="cname">${c.name}</strong>
+          <span class="tones">${c.tones.map((t) => t.name).join(' ')}</span>
+          <b class="fn fn-${c.fn}" title="${FUNC_NAMES[c.fn]}">${c.fn}</b>
+          ${extraInfo}
+        </button>`;
+      }
+
+      let current = null;
+      function renderField() {
+        current = field();
+        const { chords, extra } = current;
+        $('field').innerHTML = chords.map((c, i) => chordRow(c, i)).join('')
+          + (extra ? `<div class="field-extra">Da menor harmônica</div>${chordRow(extra, 7)}` : '');
+        $('field-note').innerHTML = extra
+          ? `No tom menor, o ${extra.lowered} sobe para <strong>${extra.raised}</strong> (menor harmônica) e o v vira <strong>${extra.name}</strong>: a dominante forte, que puxa de volta para ${chords[0].name}.`
+          : `Fórmula do tom maior: ${state.sevenths ? '7M, m7, m7, 7M, 7, m7, m7(♭5)' : 'maior, menor, menor, maior, maior, menor, diminuto'}.`;
+      }
+
+      $('field').addEventListener('click', (e) => {
+        const b = e.target.closest('.chord');
+        if (!b) return;
+        const i = Number(b.dataset.i);
+        const c = i === 7 ? current.extra : current.chords[i];
+        playSequence([midisOf(c)], 1.6, () => mark($('field'), i), () => mark($('field'), -1));
+      });
+
+      function mark(box, i) {
+        [...box.querySelectorAll('[data-i]')].forEach((el) => el.classList.toggle('on', Number(el.dataset.i) === i));
+      }
+
+      $('play-field').onclick = () => {
+        if (playback) { stopPlayback(); return; }
+        const seq = [...current.chords.map(midisOf), midisOf(current.chords[0]).map((m) => m + 12)];
+        $('play-field').textContent = '■ Parar';
+        playSequence(seq, 0.9, (i) => mark($('field'), i % 7), () => { mark($('field'), -1); $('play-field').textContent = '▶ Ouvir o campo'; });
+      };
+
+      // ---------- Progressões ----------
+      function progChord(ch) {
+        const notes = current.notes;
+        const letter = (rootLetter() + ch.degree) % 7;
+        const root = spell(letter, state.root + ch.semi);
+        const major = ['maj', 'dom7', 'maj7'].includes(ch.quality);
+        // é do campo se a fundamental e o tipo (maior/menor) batem com o acorde do grau
+        const own = current.chords[ch.degree];
+        const inField = notes[ch.degree].pc === root.pc && (own.kind === 'maj') === major && own.kind !== 'dim';
+        return { name: root.name + QUALITIES[ch.quality].suffix, roman: ch.roman, fn: inField ? own.fn : null, midis: voicing(root.pc, ch.quality) };
+      }
+
+      function renderProgs() {
+        $('progs').innerHTML = PROGRESSIONS[state.mode].map((p, pi) => {
+          const chs = p.chords.map(progChord);
+          return `<div class="prog" data-p="${pi}">
+            <div class="prog-head"><strong>${p.name}</strong><span>${p.tag}</span></div>
+            <div class="prog-chords">${chs.map((c, i) => `<span data-i="${i}" class="pc ${c.fn ? `fn-${c.fn}` : 'out'}" title="${c.roman}">${c.name}</span>`).join('')}</div>
+            <div class="prog-actions">
+              <button class="btn btn-secondary listen" data-p="${pi}">▶ Ouvir</button>
+              <a class="btn btn-secondary" href="/backing-track#root=${state.root}&mode=${state.mode}&prog=${p.id}">Backing track →</a>
+            </div>
+          </div>`;
+        }).join('');
+      }
+
+      $('progs').addEventListener('click', (e) => {
+        const b = e.target.closest('.listen');
+        if (!b) return;
+        const box = b.closest('.prog');
+        if (playback && b.classList.contains('playing')) { stopPlayback(); return; }
+        const p = PROGRESSIONS[state.mode][Number(b.dataset.p)];
+        const chs = p.chords.map(progChord);
+        b.classList.add('playing');
+        b.textContent = '■ Parar';
+        playSequence(chs.map((c) => c.midis), p.fixed ? 0.8 : 1.2, (i) => mark(box, i), () => {
+          mark(box, -1);
+          b.classList.remove('playing');
+          b.textContent = '▶ Ouvir';
+        });
+      });
+
+      // ---------- Links ----------
+      function renderLinks() {
+        const scales = state.mode === 'major' ? ['major', 'pent-maj'] : ['minor', 'pent-min', 'harm-minor'];
+        const root = ROOT_LABELS[state.mode][state.root];
+        $('links').innerHTML = scales.map((id) => `<a href="/escalas#root=${state.root}&scale=${id}">Escala: ${root} ${SCALE_NAMES[id].toLowerCase()} →</a>`).join('')
+          + `<a href="/backing-track#root=${state.root}&mode=${state.mode}">Backing track em ${keyLabel()} →</a>`;
+      }
+
+      // ---------- Controles ----------
+      function chips(el, items, isActive, onPick) {
+        el.innerHTML = '';
+        for (const it of items) {
+          const b = document.createElement('button');
+          b.textContent = it.name;
+          b.classList.toggle('active', isActive(it));
+          b.setAttribute('aria-pressed', isActive(it));
+          b.onclick = () => onPick(it);
+          el.append(b);
+        }
+      }
+
+      function setKey(root, mode) {
+        state.root = mod(root, 12);
+        state.mode = mode;
+        update();
+      }
+
+      function update() {
+        stopPlayback();
+        save();
+        chips($('modes'), MODES, (m) => m.id === state.mode, (m) => setKey(state.root, m.id));
+        chips($('kinds'), KINDS, (k) => k.id === state.sevenths, (k) => { state.sevenths = k.id; update(); });
+        $('key-name').textContent = $('key-name-2').textContent = `${keyLabel()} ${state.mode === 'major' ? 'maior' : 'menor'}`.replace(/m menor$/, ' menor');
+        renderCircle();
+        renderField();
+        renderProgs();
+        renderLinks();
+      }
+
+      document.addEventListener('keydown', (e) => {
+        if (e.target.closest('.cell, button, a')) return;
+        if (e.key === ' ') { e.preventDefault(); $('play-field').click(); }
+      });
+
+      // ---------- Início ----------
+      update();
+
+      // gancho para testes automatizados
+      window.__campo = { get state() { return state; }, field, setKey, scaleNotes, chordOn, progChord: (ch) => progChord(ch) };
+    })();
+    </script>
+  </body>
+</html>

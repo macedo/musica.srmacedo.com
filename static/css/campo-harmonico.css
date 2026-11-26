@@ -1,0 +1,163 @@
+/* Campo harmônico */
+:root {
+  --fn-T: #22c55e;
+  --fn-SD: #38bdf8;
+  --fn-D: #f97316;
+}
+
+.ch-page {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.panel-note {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.panel-note strong { color: var(--text); }
+
+/* ---------- Círculo das quintas ---------- */
+.circle-wrap { text-align: center; }
+
+.circle {
+  width: 100%;
+  max-width: 360px;
+  display: block;
+  margin: 0 auto;
+  user-select: none;
+}
+
+.circle .cell { cursor: pointer; outline: none; }
+.circle .cell path { fill: #1e293b; stroke: #0f172a; stroke-width: 2; transition: fill 0.15s; }
+.circle .cell.inner path { fill: #172033; }
+.circle .cell:hover path,
+.circle .cell:focus-visible path { fill: #334155; }
+.circle .cell.in-key path { fill: rgba(99, 102, 241, 0.28); }
+.circle .cell.selected path { fill: var(--primary); }
+
+.circle text { text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+.circle .name { fill: var(--text); font-weight: 800; font-size: 15px; }
+.circle .inner .name { font-size: 12px; font-weight: 700; fill: #cbd5e1; }
+.circle .in-key .name,
+.circle .selected .name { fill: #fff; }
+.circle .roman { fill: #c7d2fe; font-size: 10px; font-weight: 700; }
+.circle .selected .roman { fill: #fff; }
+.circle .center-key { fill: var(--text); font-size: 30px; font-weight: 800; }
+.circle .center-sub { fill: var(--text-muted); font-size: 11px; }
+
+.circle-note { margin: 6px 0 0; font-size: 0.78rem; }
+
+.ch-options { display: flex; gap: 10px; }
+.ch-options .chips { flex: 1; flex-wrap: nowrap; }
+
+/* ---------- Campo ---------- */
+.field { display: flex; flex-direction: column; gap: 6px; }
+
+.chord {
+  display: grid;
+  grid-template-columns: 76px 1fr auto 34px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: #0f172a;
+  border: 2px solid transparent;
+  border-left: 4px solid var(--c, #334155);
+  border-radius: 10px;
+  color: var(--text);
+  text-align: left;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.chord.fn-T { --c: var(--fn-T); }
+.chord.fn-SD { --c: var(--fn-SD); }
+.chord.fn-D { --c: var(--fn-D); }
+.chord.on { background: rgba(99, 102, 241, 0.18); border-color: var(--primary); border-left-color: var(--c); }
+
+.chord .roman { font-weight: 700; color: var(--text-muted); font-size: 0.9rem; white-space: nowrap; }
+.chord .cname { font-size: 1.15rem; white-space: nowrap; }
+.chord .tones { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
+
+.fn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #0f172a;
+  background: var(--c);
+}
+
+.fn.fn-T { --c: var(--fn-T); }
+.fn.fn-SD { --c: var(--fn-SD); }
+.fn.fn-D { --c: var(--fn-D); }
+
+.field-extra {
+  margin-top: 6px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.play-all { align-self: flex-start; padding: 9px 16px; font-size: 0.9rem; }
+
+@media (max-width: 400px) {
+  .chord { grid-template-columns: 64px 1fr 30px; }
+  .chord .tones { grid-column: 2; grid-row: 2; margin-top: -4px; }
+  .chord .fn { grid-column: 3; grid-row: 1 / span 2; }
+}
+
+/* ---------- Funções ---------- */
+.funcs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.funcs li { display: flex; align-items: baseline; gap: 10px; font-size: 0.88rem; color: var(--text-muted); }
+.funcs li strong { color: var(--text); }
+
+/* ---------- Progressões ---------- */
+.progs { display: flex; flex-direction: column; gap: 10px; }
+
+.prog {
+  background: #0f172a;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prog-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.prog-head span { font-size: 0.75rem; color: var(--text-muted); }
+
+.prog-chords { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.prog-chords .pc {
+  padding: 4px 9px;
+  border-radius: 8px;
+  border-bottom: 3px solid var(--c);
+  background: #1e293b;
+  font-weight: 700;
+  font-size: 0.9rem;
+  transition: background 0.1s;
+}
+
+.prog-chords .pc.fn-T { --c: var(--fn-T); }
+.prog-chords .pc.fn-SD { --c: var(--fn-SD); }
+.prog-chords .pc.fn-D { --c: var(--fn-D); }
+.prog-chords .pc.out { --c: #475569; color: var(--text-muted); }
+.prog-chords .pc.on { background: var(--primary); color: #fff; }
+
+.prog-actions { display: flex; gap: 8px; }
+.prog-actions .btn { flex: 1; padding: 8px 10px; font-size: 0.85rem; text-align: center; text-decoration: none; }
+
+/* ---------- Links ---------- */
+.links { display: flex; flex-direction: column; gap: 6px; }
+.links a { color: #a5b4fc; text-decoration: none; font-weight: 600; font-size: 0.95rem; }
+.links a:hover { text-decoration: underline; }

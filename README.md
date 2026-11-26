@@ -5,6 +5,7 @@ Ferramentas para estudar guitarra. Site estático servido por um pequeno servido
 - `/escalas`: escalas no braço da guitarra (várias afinações, canhoto, som de corda dedilhada).
 - `/metronomo`: metrônomo com acentos, subdivisões, tap tempo e treino de velocidade.
 - `/backing-track`: bateria, baixo e acordes no tom e na progressão escolhidos.
+- `/campo-harmonico`: círculo das quintas e os acordes de cada tom, com graus, funções e progressões que abrem no backing track.
 - `/afinador`: toca a nota de cada corda ou ouve a guitarra (microfone ou interface de áudio) e diz se precisa apertar ou soltar.
 
 Os samples são todos CC0: bateria e baixo da Karoryfer Samples, piano da VCSL. A origem de cada arquivo está no `README.md` de cada pasta em `static/audio/`.

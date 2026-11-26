@@ -1,4 +1,4 @@
-const CACHE_NAME = "srmacedo-musica-v7";
+const CACHE_NAME = "srmacedo-musica-v8";
 const ASSETS = [
   "/",
   "/index.html",
@@ -6,11 +6,14 @@ const ASSETS = [
   "/metronomo.html",
   "/backing-track.html",
   "/afinador.html",
+  "/campo-harmonico.html",
   "/css/application.css?v=1aebe6b0",
   "/css/base.css?v=584ccd30",
   "/css/backing-track.css?v=2def0003",
   "/css/metronomo.css?v=788d041d",
   "/css/escalas.css?v=4b7b37b3",
+  "/css/campo-harmonico.css?v=f661400d",
+  "/js/harmony.js?v=d676d04e",
   "/css/afinador.css?v=5b630ee6",
   "/js/tunings.js?v=cd5975f3",
   "/js/pitch.js?v=c35c068d",
