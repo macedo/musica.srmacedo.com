@@ -8,7 +8,7 @@
     <meta name="description" content="Afinador de guitarra online: ouça a nota de cada corda ou afine pelo microfone (ou interface de áudio) vendo se precisa apertar ou soltar.">
     <link rel="stylesheet" href="/css/application.css?v=1aebe6b0">
     <link rel="stylesheet" href="/css/base.css?v=584ccd30">
-    <link rel="stylesheet" href="/css/afinador.css?v=0eb5854c">
+    <link rel="stylesheet" href="/css/afinador.css?v=5b630ee6">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/images/icon.png">
   </head>
@@ -101,8 +101,9 @@
       const CHANNELS = [{ id: 'mix', name: 'Todas' }, { id: 0, name: 'Entrada 1' }, { id: 1, name: 'Entrada 2' }];
       const A4_MIN = 430;
       const A4_MAX = 450;
-      const IN_TUNE = 3;   // cents: afinada
-      const CLOSE = 10;    // cents: quase lá
+      const IN_TUNE = 5;       // cents: afinada
+      const IN_TUNE_EXIT = 8;  // depois de afinada, só deixa de estar acima disso (evita piscar)
+      const CLOSE = 15;        // cents: quase lá
 
       // ---------- Estado ----------
       const STORE_KEY = 'afinador:v1';
@@ -120,7 +121,6 @@
       const tuning = () => TUNINGS.find((t) => t.id === state.tuning);
       const hz = (midi) => state.a4 * 2 ** ((midi - 69) / 12);
       const centsOff = (f, midi) => 1200 * Math.log2(f / hz(midi));
-      const octave = (midi) => Math.floor(midi / 12) - 1;
 
       let locked = null;           // corda escolhida no modo microfone (null = automático)
       let status = [];             // última leitura de cada corda: { cents, ok }
@@ -342,6 +342,9 @@
       let lastHeard = 0;
       let lastDetect = 0;
       let inTuneSince = 0;
+      let prevRms = 0;
+      let peakRms = 0;       // volume máximo da nota atual
+      let settleUntil = 0;   // logo depois da palhetada a nota sai aguda: ignora esse trecho
       const HOLD_MS = 1500;  // mantém a última leitura depois que a corda para de soar
 
       // Corda mais próxima da frequência (em cents), ou a corda travada
@@ -358,6 +361,14 @@
         return s[s.length >> 1];
       }
 
+      // Média sem o quarto mais alto e o quarto mais baixo: firme como a mediana, mas sem degraus
+      function trimmedMean(a) {
+        const s = [...a].sort((x, y) => x - y);
+        const cut = s.length >> 2;
+        const mid = s.slice(cut, s.length - cut);
+        return mid.reduce((x, y) => x + y, 0) / mid.length;
+      }
+
       function loop(now) {
         raf = requestAnimationFrame(loop);
         if (now - lastDetect >= 33) {
@@ -366,18 +377,34 @@
           const r = Pitch.detect(samples, ctx.sampleRate);
           $('level').style.width = `${clamp((20 * Math.log10(r.rms + 1e-9) + 60) / 60, 0, 1) * 100}%`;
           $('level').classList.toggle('hot', r.rms > 0.7);
-          if (r.freq) {
+          // palhetada nova: o volume sobe de repente. Recomeça a média do zero.
+          if (r.rms > 0.005 && r.rms > prevRms * 1.6) {
+            settleUntil = now + 150;
+            peakRms = r.rms;
+            history = [];
+          }
+          peakRms = Math.max(peakRms, r.rms);
+          prevRms = r.rms;
+          // fim da nota (abaixo de −22 dB do pico) ou leitura pouco clara: a altura fica imprecisa
+          const weak = r.rms < peakRms * 0.08 || r.clarity < 0.9;
+          if (r.freq && (now < settleUntil || weak)) {
+            if (reading && now < settleUntil) lastHeard = now; // mantém a leitura anterior na tela
+          } else if (r.freq) {
             // nota nova (mais de meio tom de diferença): recomeça a média
             if (history.length && Math.abs(1200 * Math.log2(r.freq / median(history))) > 50) history = [];
             history.push(r.freq);
-            if (history.length > 7) history.shift();
-            if (history.length >= 2) {
-              const f = median(history);
+            if (history.length > 12) history.shift();
+            // as primeiras leituras (ataque da corda) costumam sair agudas: espera firmar
+            if (history.length >= 3) {
+              const f = trimmedMean(history);
               const i = pickString(f);
-              const cents = centsOff(f, tuning().open[i]);
-              reading = { freq: f, string: i, cents };
+              const midi = tuning().open[i];
+              let cents = centsOff(f, midi);
+              // suavização extra enquanto é a mesma corda
+              if (reading && reading.string === i && now - lastHeard < 300) cents = reading.cents + (cents - reading.cents) * 0.25;
+              const ok = Math.abs(cents) <= (reading?.ok && reading.string === i ? IN_TUNE_EXIT : IN_TUNE);
+              reading = { freq: hz(midi) * 2 ** (cents / 1200), string: i, cents, ok };
               lastHeard = now;
-              const ok = Math.abs(cents) <= IN_TUNE;
               if (ok && !inTuneSince) inTuneSince = now;
               if (!ok) inTuneSince = 0;
               // só marca a corda como afinada depois de meio segundo dentro da faixa
@@ -411,19 +438,19 @@
           $('needle').style.left = `${50 + shownCents}%`;
           return;
         }
-        const { freq, string, cents } = reading;
+        const { freq, string, cents, ok } = reading;
         const midi = tuning().open[string];
         const stale = now - lastHeard > 200;
-        shownCents += (clamp(cents, -50, 50) - shownCents) * 0.35;
+        shownCents += (clamp(cents, -50, 50) - shownCents) * 0.25;
         $('needle').style.left = `${50 + shownCents}%`;
-        $('note').innerHTML = `${noteLabel(midi)}<sub>${octave(midi)}</sub>`;
+        $('note').textContent = noteLabel(midi);
         // nota tocada, quando está longe do alvo (ex.: corda muito frouxa)
         const heard = Math.round(69 + 12 * Math.log2(freq / state.a4));
         const far = Math.abs(cents) > 50;
         const c = Math.round(cents);
-        $('freq').textContent = `${freq.toFixed(1)} Hz · ${c > 0 ? '+' : ''}${c} cents${far ? ` · está em ${SHARP[mod(heard, 12)]}${octave(heard)}` : ''}`;
+        $('freq').textContent = `${freq.toFixed(1)} Hz · ${c > 0 ? '+' : ''}${c} cents${far ? ` · está em ${SHARP[mod(heard, 12)]}` : ''}`;
         let cls, text;
-        if (Math.abs(cents) <= IN_TUNE) { cls = 'ok'; text = 'Afinada ✓'; }
+        if (ok) { cls = 'ok'; text = 'Afinada ✓'; }
         else if (cents < 0) { cls = Math.abs(cents) <= CLOSE ? 'close' : 'off'; text = far ? '↑ Aperte bastante' : Math.abs(cents) <= CLOSE ? '↑ Aperte um pouquinho' : '↑ Aperte'; }
         else { cls = Math.abs(cents) <= CLOSE ? 'close' : 'off'; text = far ? '↓ Solte bastante' : Math.abs(cents) <= CLOSE ? '↓ Solte um pouquinho' : '↓ Solte'; }
         $('advice').textContent = text;
@@ -437,7 +464,7 @@
           return;
         }
         const midi = tuning().open[refString];
-        $('ref-note').innerHTML = `${noteLabel(midi)}<sub>${octave(midi)}</sub>`;
+        $('ref-note').textContent = noteLabel(midi);
         $('ref-freq').textContent = `${6 - refString}ª corda · ${hz(midi).toFixed(2)} Hz`;
       }
 
@@ -446,10 +473,10 @@
         const box = $('strings');
         box.innerHTML = '';
         const t = tuning();
-        stringEls = t.open.map((m, i) => {
+        stringEls = t.open.map((_, i) => {
           const b = document.createElement('button');
           b.className = 'string';
-          b.innerHTML = `<span class="num">${6 - i}ª</span><span class="name">${t.names[i]}<sub>${octave(m)}</sub></span><span class="mark"></span>`;
+          b.innerHTML = `<span class="num">${6 - i}ª</span><span class="name">${t.names[i]}</span><span class="mark"></span>`;
           b.onclick = () => onString(i);
           box.append(b);
           return b;
