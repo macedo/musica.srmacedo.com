@@ -379,7 +379,11 @@
         if (playback) { stopPlayback(); return; }
         const seq = [...current.chords.map(midisOf), midisOf(current.chords[0]).map((m) => m + 12)];
         $('play-field').textContent = '■ Parar';
-        playSequence(seq, 0.9, (i) => mark($('field'), i % 7), () => { mark($('field'), -1); $('play-field').textContent = '▶ Ouvir o campo'; });
+        playSequence(seq, 0.9, (i) => {
+          // o desenho acompanha o acorde que está soando
+          if (selected !== i % 7) { selected = i % 7; shapeIdx = 0; renderShape(); }
+          mark($('field'), i % 7);
+        }, () => { mark($('field'), -1); $('play-field').textContent = '▶ Ouvir o campo'; });
       };
 
       // ---------- Progressões ----------
