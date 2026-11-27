@@ -116,6 +116,67 @@
   .chord .fn { grid-column: 3; grid-row: 1 / span 2; }
 }
 
+/* ---------- Desenho do acorde ---------- */
+.field-layout { display: flex; flex-direction: column; gap: 6px; }
+.chord.selected { border-color: var(--primary); }
+
+.shape-card {
+  background: #0f172a;
+  border: 2px solid var(--primary);
+  border-radius: 12px;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  animation: fade-in 0.15s ease;
+}
+
+.shape-head { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+.shape-head strong { font-size: 1.2rem; }
+.shape-head span { color: var(--text-muted); font-weight: 700; font-size: 0.85rem; margin-left: 4px; }
+
+.shape-close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.shape-close:hover { background: #1e293b; color: var(--text); }
+
+.chord-diagram { width: 100%; max-width: 170px; display: block; }
+.chord-diagram text { text-anchor: middle; dominant-baseline: central; font-family: inherit; }
+.chord-diagram .fret { stroke: #475569; stroke-width: 1.5; }
+.chord-diagram .string { stroke: #94a3b8; stroke-width: 1.2; }
+.chord-diagram .nut { fill: #e2e8f0; }
+.chord-diagram .pos { fill: var(--text-muted); font-size: 11px; font-weight: 700; }
+.chord-diagram .barre { fill: rgba(99, 102, 241, 0.55); }
+.chord-diagram .dot { fill: var(--primary); }
+.chord-diagram .dot.root { fill: #f97316; }
+.chord-diagram .iv { fill: #fff; font-size: 9px; font-weight: 800; }
+.chord-diagram .open { fill: none; stroke: #cbd5e1; stroke-width: 1.6; }
+.chord-diagram .open.root { stroke: #f97316; }
+.chord-diagram .open-iv { fill: var(--text-muted); font-size: 9px; font-weight: 700; }
+.chord-diagram .mute { fill: #94a3b8; font-size: 15px; font-weight: 700; }
+
+.shape-desc { margin: 0; font-size: 0.78rem; text-align: center; }
+.shape-empty { margin: 12px 0; font-size: 0.85rem; text-align: center; }
+
+.shape-nav { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-muted); }
+.shape-nav .step.small { width: 34px; height: 34px; font-size: 1.2rem; }
+
+/* No computador o desenho fica ao lado da lista */
+@media (min-width: 760px) {
+  .ch-page { max-width: 760px; }
+  .field-layout { display: grid; grid-template-columns: 1fr 210px; align-items: start; gap: 14px; }
+  .shape-side { position: sticky; top: 12px; }
+}
+
 /* ---------- Funções ---------- */
 .funcs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .funcs li { display: flex; align-items: baseline; gap: 10px; font-size: 0.88rem; color: var(--text-muted); }

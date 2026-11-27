@@ -8,7 +8,7 @@
     <meta name="description" content="Campo harmônico e círculo das quintas: os acordes de cada tom, com graus, funções (tônica, subdominante, dominante) e progressões comuns.">
     <link rel="stylesheet" href="/css/application.css?v=1aebe6b0">
     <link rel="stylesheet" href="/css/base.css?v=584ccd30">
-    <link rel="stylesheet" href="/css/campo-harmonico.css?v=f661400d">
+    <link rel="stylesheet" href="/css/campo-harmonico.css?v=4833acf5">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/images/icon.png">
   </head>
@@ -32,7 +32,12 @@
 
       <section class="panel">
         <h2>Acordes de <span class="chosen" id="key-name"></span></h2>
-        <div class="field" id="field"></div>
+        <div class="field-layout">
+          <div class="field" id="field"></div>
+          <aside class="shape-side" id="shape-side">
+            <div class="shape-card" id="shape-card" aria-live="polite"></div>
+          </aside>
+        </div>
         <button class="btn btn-secondary play-all" id="play-field">▶ Ouvir o campo</button>
         <p class="panel-note" id="field-note"></p>
       </section>
@@ -67,6 +72,7 @@
     <script src="/js/harmony.js?v=d676d04e"></script>
     <script src="/js/sampler.js?v=d17a215b"></script>
     <script src="/js/piano.js?v=b868dad0"></script>
+    <script src="/js/chord-shapes.js?v=cafd7b98"></script>
     <script>
     (() => {
       const { $, toast } = App;
@@ -111,7 +117,7 @@
         const roman = sevenths
           ? flat + ROMAN[i] + suffix
           : flat + (up ? ROMAN[i] : ROMAN[i].toLowerCase()) + (triad.kind === 'dim' ? '°' : triad.kind === 'aug' ? '+' : '');
-        return { root: tones[0], tones, iv, kind: triad.kind, name: tones[0].name + suffix, roman };
+        return { root: tones[0], tones, iv, kind: triad.kind, suffix, name: tones[0].name + suffix, roman };
       }
 
       function field() {
@@ -299,6 +305,9 @@
         const { chords, extra } = current;
         $('field').innerHTML = chords.map((c, i) => chordRow(c, i)).join('')
           + (extra ? `<div class="field-extra">Da menor harmônica</div>${chordRow(extra, 7)}` : '');
+        if (selected === 7 && !extra) selected = null;
+        shapeIdx = 0;
+        renderShape();
         $('field-note').innerHTML = extra
           ? `No tom menor, o ${extra.lowered} sobe para <strong>${extra.raised}</strong> (menor harmônica) e o v vira <strong>${extra.name}</strong>: a dominante forte, que puxa de volta para ${chords[0].name}.`
           : `Fórmula do tom maior: ${state.sevenths ? '7M, m7, m7, 7M, 7, m7, m7(♭5)' : 'maior, menor, menor, maior, maior, menor, diminuto'}.`;
@@ -309,8 +318,58 @@
         if (!b) return;
         const i = Number(b.dataset.i);
         const c = i === 7 ? current.extra : current.chords[i];
+        if (selected !== i) { selected = i; shapeIdx = 0; renderShape(); }
         playSequence([midisOf(c)], 1.6, () => mark($('field'), i), () => mark($('field'), -1));
       });
+
+      // ---------- Desenho do acorde ----------
+      let selected = null; // índice do acorde aberto no desenho (7 = V da menor harmônica)
+      let shapeIdx = 0;
+      const wide = window.matchMedia('(min-width: 760px)');
+      // guardado aqui: no celular ele mora dentro da lista, que é recriada a cada troca de tom
+      const card = $('shape-card');
+      const lefty = () => { try { return !!JSON.parse(localStorage.getItem('escalas:v1'))?.lefty; } catch { return false; } };
+
+      function renderShape() {
+        [...$('field').querySelectorAll('.chord')].forEach((el) => el.classList.toggle('selected', Number(el.dataset.i) === selected));
+        if (selected === null) {
+          card.innerHTML = '<p class="shape-empty">Toque num acorde para ver como tocar.</p>';
+          card.hidden = !wide.matches;
+          $('shape-side').append(card);
+          return;
+        }
+        const c = selected === 7 ? current.extra : current.chords[selected];
+        const list = ChordShapes.shapes(c.root.pc, c.suffix);
+        shapeIdx = Math.min(shapeIdx, Math.max(0, list.length - 1));
+        const sh = list[shapeIdx];
+        card.hidden = false;
+        card.innerHTML = `
+          <div class="shape-head">
+            <div><strong>${c.name}</strong> <span>${c.roman}</span></div>
+            <button class="shape-close" aria-label="Fechar o desenho">×</button>
+          </div>
+          ${sh ? ChordShapes.svg(sh.frets, c.root.pc, { lefty: lefty(), barre: sh.barre }).replace('role="img"', `role="img" aria-label="${c.name}: ${sh.frets.map((f) => (f === null ? 'x' : f)).join(' ')}"`) : '<p class="shape-empty">Sem desenho para este acorde.</p>'}
+          ${sh ? `<p class="shape-desc">${sh.desc}</p>` : ''}
+          ${list.length > 1 ? `<div class="shape-nav">
+            <button class="step small" data-d="-1" aria-label="Forma anterior">‹</button>
+            <span>Forma ${shapeIdx + 1} de ${list.length}</span>
+            <button class="step small" data-d="1" aria-label="Próxima forma">›</button>
+          </div>` : ''}`;
+        // no celular o desenho abre logo abaixo do acorde; no computador, ao lado da lista
+        if (wide.matches) $('shape-side').append(card);
+        else $('field').querySelector(`.chord[data-i="${selected}"]`)?.after(card);
+      }
+
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.shape-close')) { selected = null; renderShape(); return; }
+        const nav = e.target.closest('[data-d]');
+        if (!nav) return;
+        const c = selected === 7 ? current.extra : current.chords[selected];
+        const n = ChordShapes.shapes(c.root.pc, c.suffix).length;
+        shapeIdx = (shapeIdx + Number(nav.dataset.d) + n) % n;
+        renderShape();
+      });
+      wide.addEventListener('change', renderShape);
 
       function mark(box, i) {
         [...box.querySelectorAll('[data-i]')].forEach((el) => el.classList.toggle('on', Number(el.dataset.i) === i));
